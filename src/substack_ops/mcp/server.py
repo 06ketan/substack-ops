@@ -40,69 +40,106 @@ def _make_token(payload: dict[str, Any]) -> str:
 
 TOOLS: dict[str, dict[str, Any]] = {
     "test_connection": {
-        "description": "Verify Substack auth + return who you are.",
+        "description": (
+            "Read-only. Verify the Substack session cookie works and return the "
+            "authenticated user's id, handle, and primary publication. Call this "
+            "first if other tools 401 or to confirm setup. No args."
+        ),
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     "get_own_profile": {
-        "description": "Your Substack profile.",
+        "description": (
+            "Read-only. Return the authenticated user's full profile (handle, name, "
+            "bio, photo, subscriber count). Use for self-info; for other users call "
+            "get_profile. No args."
+        ),
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     "get_profile": {
-        "description": "Public profile for a user handle.",
+        "description": (
+            "Read-only. Return any user's public profile by handle (the @-name from "
+            "their Substack URL, e.g. 'paulgraham'). For your own profile use "
+            "get_own_profile (faster, no handle needed)."
+        ),
         "input_schema": {
             "type": "object",
-            "properties": {"handle": {"type": "string"}},
+            "properties": {
+                "handle": {
+                    "type": "string",
+                    "description": "Substack handle without @, as it appears in their URL.",
+                }
+            },
             "required": ["handle"],
         },
     },
     "list_posts": {
-        "description": "List posts from a publication (yours unless --pub).",
+        "description": (
+            "Read-only. List posts from a publication (yours by default). For a "
+            "single post by id/slug use get_post; for full HTML body use "
+            "get_post_content; to find by keyword use search_posts."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "limit": {"type": "integer", "default": 20},
-                "pub": {"type": "string"},
-                "sort": {"type": "string", "default": "new"},
+                "limit": {"type": "integer", "default": 20, "description": "Max posts to return (1-100)."},
+                "pub": {"type": "string", "description": "Publication URL (e.g. https://example.substack.com/). Omit to use the authed user's pub."},
+                "sort": {"type": "string", "default": "new", "enum": ["new", "top"], "description": "'new' = chronological; 'top' = most popular."},
             },
         },
     },
     "get_post": {
-        "description": "Post metadata by id or slug.",
+        "description": (
+            "Read-only. Return one post's metadata (title, slug, dates, reactions, "
+            "comment count) by numeric id OR slug. For HTML body use "
+            "get_post_content. For id-only callers prefer get_post_by_id."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "post_id": {"type": "string"},
+                "post_id": {"type": "string", "description": "Numeric post id (e.g. '193866852') or slug ('my-post-title')."},
                 "pub": {"type": "string"},
             },
             "required": ["post_id"],
         },
     },
     "get_post_by_id": {
-        "description": "Post metadata by numeric id only.",
+        "description": (
+            "Read-only. Strict-typed variant of get_post that only accepts a numeric "
+            "id (no slug). Use when you already have an integer id and want type "
+            "safety; otherwise use get_post."
+        ),
         "input_schema": {
             "type": "object",
-            "properties": {"post_id": {"type": "integer"}},
+            "properties": {"post_id": {"type": "integer", "description": "Numeric Substack post id."}},
             "required": ["post_id"],
         },
     },
     "get_post_content": {
-        "description": "HTML body of a post (auth-aware for paywalled).",
+        "description": (
+            "Read-only. Return a post's body. Auth-aware: returns full text for "
+            "paywalled posts you have access to, otherwise only the free preview. "
+            "Set as_markdown=true to convert HTML to Markdown for LLM context."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "post_id": {"type": "string"},
                 "pub": {"type": "string"},
-                "as_markdown": {"type": "boolean", "default": False},
+                "as_markdown": {"type": "boolean", "default": False, "description": "Convert HTML to Markdown."},
             },
             "required": ["post_id"],
         },
     },
     "search_posts": {
-        "description": "Search posts in a publication.",
+        "description": (
+            "Read-only. Full-text search posts in a publication. Use for keyword "
+            "discovery; for chronological browsing use list_posts. Returns titles + "
+            "ids only (call get_post / get_post_content for details)."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string"},
+                "query": {"type": "string", "description": "Search keywords (Substack-side full-text)."},
                 "limit": {"type": "integer", "default": 10},
                 "pub": {"type": "string"},
             },
@@ -110,14 +147,22 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
     },
     "list_notes": {
-        "description": "List notes by the current user.",
+        "description": (
+            "Read-only. List the authenticated user's own published Notes "
+            "(short-form, Twitter-like). For a comment thread on a post use "
+            "list_comments. For replies under one note, fetch via the note id."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {"limit": {"type": "integer", "default": 20}},
         },
     },
     "list_comments": {
-        "description": "Comment tree for a post.",
+        "description": (
+            "Read-only. Return the full nested comment tree for a post (parent + "
+            "replies, with author handle, body, date, reaction count). To find only "
+            "the threads YOU haven't replied to yet, use get_unanswered_comments."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -128,32 +173,46 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
     },
     "get_feed": {
-        "description": "Reader feed (for-you / subscribed / category-{slug}).",
+        "description": (
+            "Read-only. Pull the reader feed you'd see in the Substack app. Use "
+            "tab='for-you' for personalized, 'subscribed' for pubs you follow, or "
+            "'category-{slug}' (e.g. 'category-tech') for a topic feed."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "tab": {"type": "string", "default": "for-you"},
+                "tab": {"type": "string", "default": "for-you", "description": "'for-you' | 'subscribed' | 'category-{slug}'"},
                 "limit": {"type": "integer", "default": 20},
             },
         },
     },
     "publish_note": {
-        "description": "Publish a top-level note.",
+        "description": (
+            "WRITE. Publish a new top-level Note (short-form post). Defaults to "
+            "dry_run=true (no network write); set dry_run=false to actually post. "
+            "Idempotent via dedup hash on body. For a reply to an existing note use "
+            "reply_to_note. For long-form posts, use Substack's editor (not exposed)."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "body": {"type": "string"},
-                "dry_run": {"type": "boolean", "default": True},
+                "body": {"type": "string", "description": "Note text. Plain text or simple markdown."},
+                "dry_run": {"type": "boolean", "default": True, "description": "true (default) = preview only; false = actually publish."},
             },
             "required": ["body"],
         },
     },
     "reply_to_note": {
-        "description": "Reply to a note (dedup-aware).",
+        "description": (
+            "WRITE. Reply to an existing Note (any author's). Defaults to "
+            "dry_run=true. Dedup-protected: replays of the same body to the same "
+            "note are no-ops. For replies to a post comment, use propose_reply -> "
+            "confirm_reply (which run through the same safety stack)."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "note_id": {"type": "string"},
+                "note_id": {"type": "string", "description": "Numeric id of the note you're replying under."},
                 "body": {"type": "string"},
                 "dry_run": {"type": "boolean", "default": True},
             },
@@ -161,7 +220,12 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
     },
     "comment_on_post": {
-        "description": "Top-level comment on a post.",
+        "description": (
+            "WRITE. Add a NEW top-level comment under a post (not a reply to an "
+            "existing comment). Defaults to dry_run=true. For replies to existing "
+            "comments use propose_reply -> confirm_reply. Dedup-protected by "
+            "(post_id, body) hash."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -174,13 +238,18 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
     },
     "react_to_post": {
-        "description": "React (or unreact with on=false) to a post.",
+        "description": (
+            "WRITE. Add (on=true, default) or remove (on=false) a reaction on a "
+            "post. Defaults to ❤ and dry_run=true. For comment-level reactions use "
+            "react_to_comment. Reactions are not deduped (Substack itself "
+            "idempotent)."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "post_id": {"type": "string"},
-                "reaction": {"type": "string", "default": "❤"},
-                "on": {"type": "boolean", "default": True},
+                "reaction": {"type": "string", "default": "❤", "description": "Emoji glyph (❤, 👍, 🎉, etc)."},
+                "on": {"type": "boolean", "default": True, "description": "true=add, false=remove."},
                 "pub": {"type": "string"},
                 "dry_run": {"type": "boolean", "default": True},
             },
@@ -188,12 +257,16 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
     },
     "react_to_comment": {
-        "description": "React to a comment (kind=post|note).",
+        "description": (
+            "WRITE. React on a comment (default ❤). Set kind='post' for comments "
+            "under a post (uses the publication host) or kind='note' for replies "
+            "on a Note (uses substack.com). Defaults to dry_run=true."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "comment_id": {"type": "string"},
-                "kind": {"type": "string", "default": "post"},
+                "kind": {"type": "string", "default": "post", "enum": ["post", "note"]},
                 "reaction": {"type": "string", "default": "❤"},
                 "on": {"type": "boolean", "default": True},
                 "pub": {"type": "string"},
@@ -203,19 +276,26 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
     },
     "restack_post": {
-        "description": "Restack a post.",
+        "description": (
+            "WRITE. Restack a post (Substack's reshare). Defaults to dry_run=true. "
+            "Substack does NOT support unrestacking via the public API — once on, "
+            "stays on. To restack a Note instead, use restack_note."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "post_id": {"type": "string"},
-                "on": {"type": "boolean", "default": True},
+                "on": {"type": "boolean", "default": True, "description": "Note: off (false) is not supported by Substack — will be a no-op."},
                 "dry_run": {"type": "boolean", "default": True},
             },
             "required": ["post_id"],
         },
     },
     "restack_note": {
-        "description": "Restack a note.",
+        "description": (
+            "WRITE. Restack a Note. Defaults to dry_run=true. Like restack_post, "
+            "Substack does not support unrestacking. For posts use restack_post."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -227,12 +307,17 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
     },
     "delete_comment": {
-        "description": "Delete a comment (kind=post uses pub host; kind=note uses substack.com).",
+        "description": (
+            "DESTRUCTIVE WRITE. Delete one of YOUR own comments (or one on your "
+            "publication if you're the owner). Cannot be undone. Set kind='post' "
+            "to delete a post comment (uses pub host) or kind='note' for a note "
+            "reply. Defaults to dry_run=true — you must explicitly set false."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "comment_id": {"type": "string"},
-                "kind": {"type": "string", "default": "post"},
+                "kind": {"type": "string", "default": "post", "enum": ["post", "note"]},
                 "pub": {"type": "string"},
                 "dry_run": {"type": "boolean", "default": True},
             },
@@ -241,79 +326,107 @@ TOOLS: dict[str, dict[str, Any]] = {
     },
     # ------- substack-ops unique tools -------
     "bulk_draft_replies": {
-        "description": "Generate AI reply drafts for every comment on a post (or note). Writes drafts.json.",
+        "description": (
+            "WRITE TO LOCAL FILE (no Substack call). Generate reply drafts for "
+            "every comment on a post (kind='post') or every reply on a note "
+            "(kind='note') using the daemon-path LLM (host CLI: claude / "
+            "cursor-agent / codex on PATH, or SUBSTACK_OPS_LLM_CMD). Output is a "
+            "JSONL drafts file with action='proposed' per row; review, edit "
+            "action to 'approved' or 'rejected', then send via send_approved_drafts."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "kind": {"type": "string", "enum": ["post", "note"], "default": "post"},
-                "id": {"type": "string"},
+                "id": {"type": "string", "description": "post_id or note_id matching kind."},
                 "out": {"type": "string", "default": "drafts.json"},
-                "model": {"type": "string"},
+                "model": {"type": "string", "description": "Optional model hint passed to the host CLI."},
             },
             "required": ["id"],
         },
     },
     "send_approved_drafts": {
-        "description": "Post only the entries in a drafts.json file marked action=approved.",
+        "description": (
+            "WRITE. Sequentially post every entry in a drafts.json file where "
+            "action=='approved'. Skips proposed/rejected/already-deduped rows. "
+            "Honors rate_seconds throttle. Defaults dry_run=true; set false to "
+            "actually post. Use force=true to bypass dedup (rare; reposts a "
+            "previously-sent reply)."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "drafts_path": {"type": "string"},
+                "drafts_path": {"type": "string", "description": "Path to drafts.json produced by bulk_draft_replies."},
                 "dry_run": {"type": "boolean", "default": True},
-                "rate_seconds": {"type": "number", "default": 30},
-                "force": {"type": "boolean", "default": False},
+                "rate_seconds": {"type": "number", "default": 30, "description": "Min seconds between posts."},
+                "force": {"type": "boolean", "default": False, "description": "Bypass dedup. Use sparingly."},
             },
             "required": ["drafts_path"],
         },
     },
     "audit_search": {
-        "description": "Search the .cache/audit.jsonl log.",
+        "description": (
+            "Read-only. Query the local audit.jsonl log of every write this server "
+            "has performed (or attempted). Filters compose with AND. Use to debug "
+            "'did I post that?' or to pull rate-limit history. For a quick count "
+            "summary use dedup_status."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "kind": {"type": "string"},
-                "target": {"type": "string"},
-                "status": {"type": "string"},
-                "since": {"type": "string"},
+                "kind": {"type": "string", "description": "e.g. 'reply', 'reaction', 'restack', 'note'"},
+                "target": {"type": "string", "description": "post_id / note_id / comment_id substring."},
+                "status": {"type": "string", "enum": ["ok", "error", "dry_run", "deduped"]},
+                "since": {"type": "string", "description": "ISO-8601 timestamp or relative ('7d', '24h')."},
                 "limit": {"type": "integer", "default": 50},
             },
         },
     },
     "dedup_status": {
-        "description": "Counts in the dedup SQLite DB.",
+        "description": (
+            "Read-only. Return counts from the local dedup SQLite DB (one row per "
+            "successful write, keyed by content hash). Quick health check; for "
+            "filtered details use audit_search. No args."
+        ),
         "input_schema": {"type": "object", "properties": {}},
     },
     # ------- MCP-native draft loop (host LLM does the drafting) -------
     "get_unanswered_comments": {
         "description": (
-            "Return comments on a post where the authed user has NOT yet replied. "
-            "Use this as the worklist: read each, draft a reply in your own context, "
-            "then call propose_reply -> confirm_reply for each one you want to send."
+            "Read-only. Return comments on a post where the authenticated user has "
+            "NOT yet replied (filters out the entire branch if you've replied "
+            "anywhere in the ancestry). This is the canonical worklist tool: read "
+            "each, draft a reply in your own context, then propose_reply -> "
+            "confirm_reply per item. For the full unfiltered tree use list_comments."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "post_id": {"type": "string"},
                 "pub": {"type": "string"},
-                "limit": {"type": "integer", "default": 50},
+                "limit": {"type": "integer", "default": 50, "description": "Max unanswered comments to return."},
             },
             "required": ["post_id"],
         },
     },
     "propose_reply": {
         "description": (
-            "Dry-run a reply. Returns a token + dedup hash + the would-be payload. "
-            "NO Substack write. Show the preview to the user. On their approval, "
-            "call confirm_reply with the same token. Token expires in 5 min."
+            "STAGE A WRITE (no Substack call yet). Validate a reply, compute its "
+            "dedup hash, build the exact payload, store it under a token, return "
+            "the token + preview. Show the preview to the user. On approval, call "
+            "confirm_reply with the same token. Tokens expire in 5 minutes. "
+            "kind='post' requires post_id + parent_comment_id (for replies under a "
+            "comment); kind='note' requires note_id. For new top-level post "
+            "comments use comment_on_post."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "kind": {"type": "string", "enum": ["post", "note"], "default": "post"},
-                "post_id": {"type": "string"},
-                "note_id": {"type": "string"},
-                "parent_comment_id": {"type": "string"},
-                "body": {"type": "string"},
+                "post_id": {"type": "string", "description": "Required for kind='post'."},
+                "note_id": {"type": "string", "description": "Required for kind='note'."},
+                "parent_comment_id": {"type": "string", "description": "The comment id you're replying under. Required for kind='post'."},
+                "body": {"type": "string", "description": "The reply text the host LLM drafted."},
                 "pub": {"type": "string"},
             },
             "required": ["body"],
@@ -321,14 +434,17 @@ TOOLS: dict[str, dict[str, Any]] = {
     },
     "confirm_reply": {
         "description": (
-            "Post a previously-proposed reply by token. Idempotent via dedup DB. "
-            "Returns the live Substack response (or {deduped: true} if already posted)."
+            "EXECUTE the staged write. Look up the token from propose_reply, post "
+            "to Substack, log to audit.jsonl, persist dedup row. Idempotent: if "
+            "the same content was already sent, returns {deduped: true} without "
+            "re-posting. Use force=true to bypass dedup (rare). Tokens are "
+            "single-use and expire 5 min after propose_reply."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "token": {"type": "string"},
-                "force": {"type": "boolean", "default": False},
+                "token": {"type": "string", "description": "Opaque token returned by propose_reply."},
+                "force": {"type": "boolean", "default": False, "description": "Bypass dedup. Use only when you intentionally want to re-send."},
             },
             "required": ["token"],
         },

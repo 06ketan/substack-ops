@@ -1,0 +1,72 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.06ketan/substack-ops",
+  "description": "Standalone Substack CLI + 26-tool MCP server. Host LLM drafts replies via propose_reply / confirm_reply tokens. No Anthropic/OpenAI API keys needed. Posts, notes, comments, replies, reactions, restacks, audit & dedup.",
+  "title": "substack-ops",
+  "websiteUrl": "https://substack-ops.chavan.in",
+  "repository": {
+    "url": "https://github.com/06ketan/substack-ops",
+    "source": "github"
+  },
+  "version": "0.3.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "substack-ops",
+      "version": "0.3.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "uvx",
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        },
+        {
+          "type": "positional",
+          "value": "serve"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "SUBSTACK_PUBLICATION_URL",
+          "description": "Your Substack publication URL (e.g. https://you.substack.com/). Optional if set in ~/.cursor/mcp.json's mcpServers.substack-api.env.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SUBSTACK_USER_ID",
+          "description": "Your Substack numeric user id. Optional if set in ~/.cursor/mcp.json.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SUBSTACK_SESSION_TOKEN",
+          "description": "Your Substack session cookie value (the s%3A... string). Required for authenticated calls. Easier path: run `substack-ops auth login --browser chrome` and the cookie is auto-grabbed.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "SUBSTACK_OPS_MCP_PATH",
+          "description": "Override path to the mcp.json file the auth layer reads. Defaults to ~/.cursor/mcp.json.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SUBSTACK_OPS_LLM_CMD",
+          "description": "Optional: override the host CLI used by the unattended daemon path (default: auto-detect claude / cursor-agent / codex on PATH). Use {prompt} placeholder if your CLI takes the prompt as an arg.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "tool": "manual",
+      "version": "0.3.0"
+    }
+  }
+}

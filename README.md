@@ -1,5 +1,7 @@
 # substack-ops
 
+<!-- mcp-name: io.github.06ketan/substack-ops -->
+
 [![PyPI version](https://img.shields.io/pypi/v/substack-ops?color=ff6719&label=pypi)](https://pypi.org/project/substack-ops/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)

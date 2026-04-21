@@ -1,6 +1,6 @@
 [project]
 name = "substack-ops"
-version = "0.3.2"
+version = "0.3.3"
 description = "Standalone Substack CLI + 26-tool MCP server. Your IDE drafts the replies. Zero AI API keys."
 readme = "README.md"
 authors = [

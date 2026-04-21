@@ -13,12 +13,8 @@
 Site → **[substack-ops.chavan.in](https://substack-ops.chavan.in)** · Source → **[06ketan/substack-ops](https://github.com/06ketan/substack-ops)**
 
 Posts, notes, comments, replies, reactions, restacks, recommendations, search,
-profiles, feeds, automations, MCP server, Textual TUI.
-
-**No runtime dependency on `NHagar/substack_api` or `postcli/substack`.** All
-upstream code is vendored and ported to `httpx` under
-`src/substack_ops/_substack/`. AGPL-clean: we re-implement against the same
-documented endpoints; we do not copy AGPL-licensed code from postcli.
+profiles, feeds, automations, MCP server, Textual TUI. One Python install, one
+binary, MIT licensed.
 
 ## TL;DR — MCP-native (no API key, one command)
 
@@ -54,40 +50,106 @@ uv run substack-ops quickstart   # 20-step tour
 
 ## Command surface
 
-```text
-substack-ops auth verify | test | login [--browser chrome|brave] [--email <addr>] | setup
-substack-ops posts list | show <id|slug> | stats <id> | content <id> [--md]
-                | search <query> [--pub] | paywalled <id> | get --slug <slug>
-                | react <id> [--off] | restack <id> [--off]
-substack-ops notes list | show <id> | publish <body>
-                | react <id> [--off] | restack <id> [--off]
-substack-ops comments tree <post_id> | export <post_id> --out <f>
-                | add <post_id> <body> | react <id> --kind post|note
-                | delete <id> --kind post|note
-substack-ops reply template <post_id> --template <name>
-              | review <post_id>
-              | bulk <post_id> --out drafts.json
-              | note-bulk <note_id> --out drafts.json
-              | bulk-send drafts.json [--no-dry-run]
-              | auto <post_id> --no-dry-run --yes-i-mean-it
-substack-ops podcasts list [--pub]
-substack-ops recommendations list [--pub]
-substack-ops authors list [--pub]
-substack-ops categories list | get --name X
-substack-ops users get <handle> | subscriptions <handle>
-substack-ops profile me | get <handle>
-substack-ops feed list --tab for-you|subscribed|category-{slug}
-substack-ops audit search [--kind] [--target] [--status] [--since 7d]
-              | dedup-status
-substack-ops auto presets | run <name> | daemon <name> --interval 60
-substack-ops mcp [--list-tools]
-substack-ops tui
-substack-ops quickstart
-```
+Grouped by intent. Every write defaults to `--dry-run`; flip with
+`--no-dry-run` (and `--yes-i-mean-it` for the irreversible ones). All writes
+land in `.cache/audit.jsonl` and are dedup-checked against `.cache/actions.db`.
 
-Every write op defaults to `--dry-run` and is logged to `.cache/audit.jsonl`.
-Live writes are checked against `.cache/actions.db` (SQLite dedup) and refused
-if duplicate, unless `--force`.
+### Auth (4)
+
+| Command | What it does |
+|---|---|
+| `auth verify` | Confirm the cookie works; print authed user/pub. |
+| `auth test` | Same as verify, exit non-zero on failure (CI-friendly). |
+| `auth login --browser chrome\|brave` | Auto-grab cookie from local Chromium browser via macOS Keychain. |
+| `auth login --email me@x.com` | Email magic-link → paste-the-link interactive flow. |
+| `auth setup` | Interactive paste of `connect.sid` cookie. |
+
+### Read — Posts (8)
+
+| Command | What it does |
+|---|---|
+| `posts list [--pub] [--limit] [--sort new\|top]` | List posts from a publication (yours by default). |
+| `posts show <id\|slug> [--pub]` | Post metadata (title, dates, reactions, comment count). |
+| `posts get --slug <slug> [--pub]` | Same as `show` but slug-only. |
+| `posts content <id> [--md] [--pub]` | HTML body (auth-aware for paywalled). `--md` converts to Markdown. |
+| `posts stats <id>` | Engagement counts — reactions, comments. |
+| `posts search <query> [--pub] [--limit]` | Substack-side full-text search. |
+| `posts paywalled <id> [--pub]` | Boolean: is this post paywalled? |
+| `posts react <id> [--off] [--pub]` | Add (or remove with `--off`) a reaction. Defaults to ❤. |
+| `posts restack <id> [--off]` | Restack a post (Substack does not support unrestack). |
+
+### Read — Notes (5)
+
+| Command | What it does |
+|---|---|
+| `notes list [--limit]` | Your published Notes. |
+| `notes show <id>` | One note + its reply tree. |
+| `notes publish <body> [--no-dry-run]` | Publish a top-level Note. |
+| `notes react <id> [--off]` | React on any Note. |
+| `notes restack <id> [--off]` | Restack a Note. |
+
+### Read + Write — Comments (5)
+
+| Command | What it does |
+|---|---|
+| `comments tree <post_id> [--pub]` | Full nested comment tree as table. |
+| `comments export <post_id> --out file.json [--pub]` | Same tree as JSON. |
+| `comments add <post_id> <body> [--pub] [--no-dry-run]` | New top-level comment. |
+| `comments react <id> --kind post\|note [--off]` | React on a comment. |
+| `comments delete <id> --kind post\|note [--no-dry-run]` | Destructive — your own comments only. |
+
+### Reply engine (6)
+
+| Command | What it does |
+|---|---|
+| `reply template <post_id> --template thanks` | Rule-based replies (no LLM). |
+| `reply review <post_id>` | LLM drafts each, you `[a]ccept / [e]dit / [s]kip / [q]uit`. |
+| `reply bulk <post_id> --out drafts.json` | Draft every comment to a file. Edit, set `action: "approved"`. |
+| `reply note-bulk <note_id> --out drafts.json` | Same for replies under a Note. |
+| `reply bulk-send drafts.json [--no-dry-run]` | Posts only `approved` rows. Dedup-checked. |
+| `reply auto <post_id> --no-dry-run --yes-i-mean-it` | Draft + post immediately. 30s rate limit. |
+
+### Read — Discovery (8)
+
+| Command | What it does |
+|---|---|
+| `feed list --tab for-you\|subscribed\|category-{slug}` | Reader feed (the Substack app feed). |
+| `profile me` / `profile get <handle>` | Profile. |
+| `users get <handle>` / `users subscriptions <handle>` | Public user info + their subs. |
+| `podcasts list [--pub]` | Audio posts. |
+| `recommendations list [--pub]` | Pub's recommended publications. |
+| `authors list [--pub]` | Pub's contributor list. |
+| `categories list` / `categories get --name <X>` | Substack's category taxonomy. |
+
+### Automations (3)
+
+| Command | What it does |
+|---|---|
+| `auto presets` | List built-in YAML rules. |
+| `auto run <name>` | One-shot run a preset. |
+| `auto daemon <name> --interval 60` | Loop forever; logs to audit. |
+
+### Operations + safety (3)
+
+| Command | What it does |
+|---|---|
+| `audit search [--kind] [--target] [--status] [--since 7d]` | Query the JSONL audit log. |
+| `audit dedup-status` | Counts in the dedup SQLite DB. |
+| `quickstart` | 20-step interactive tour. |
+
+### MCP server (3)
+
+| Command | What it does |
+|---|---|
+| `mcp install <cursor\|claude-desktop\|claude-code\|print> [--dry-run]` | Auto-merge config into your host. |
+| `mcp serve` | stdio MCP server (26 tools). |
+| `mcp list-tools` | Print the tool registry. |
+
+### Other (1)
+
+| Command | What it does |
+|---|---|
+| `tui` | Textual TUI — 6 tabs (Notes, Posts, Comments, Feed, Auto, Profile). |
 
 ## Multi-publication
 
@@ -169,9 +231,9 @@ echo '{"tool":"list_posts","args":{"limit":3}}' | substack-ops mcp serve
 | `propose_reply` | Dry-run only. Returns a `token` + payload preview. **No write.** |
 | `confirm_reply` | Posts a previously-proposed reply by token. Idempotent via dedup DB. Token TTL 5 min. |
 
-Tools unique to substack-ops (not in postcli/NHagar):
-`bulk_draft_replies`, `send_approved_drafts`, `audit_search`, `dedup_status`,
-`get_unanswered_comments`, `propose_reply`, `confirm_reply`.
+**Differentiator tools** (the safety + drafting stack that makes the unattended
+mode safe): `bulk_draft_replies`, `send_approved_drafts`, `audit_search`,
+`dedup_status`, `get_unanswered_comments`, `propose_reply`, `confirm_reply`.
 
 ## LLM strategy
 
@@ -285,13 +347,16 @@ per-phase plans at `.planning/phases/M*/PHASE.md`.
 ## Known gaps
 
 - Full email stats (opens/clicks/views) — needs dashboard CSRF flow. Fallback: Playwright MCP scrape.
-- Reactions endpoint shape on POST/DELETE not yet probed live; current shape is a best-guess from postcli's tool list.
+- Reactions endpoint shape on POST/DELETE not yet probed live; current shape is a best-guess from upstream tool catalogs.
 - Auto-engine `new_follower` / `new_note_from` triggers are stubbed (return `note: "trigger not yet implemented"`).
 - TUI sub-tabs (1/2/3) and reply/like/restack key bindings are scaffolded but not wired to the client yet.
 - Chrome cookie auto-grab tested only for macOS Chrome; Brave path included; Linux/Windows not supported.
 
 ## License
 
-MIT (this repo). Vendored upstream code is MIT-licensed per
-`NHagar/substack_api`'s LICENSE. We do not include code from `postcli/substack`
-(AGPL-3.0); we re-implement against the same documented endpoints.
+MIT. See [LICENSE](LICENSE).
+
+The vendored httpx-port helpers under `src/substack_ops/_substack/` are derived
+from the MIT-licensed `NHagar/substack_api` package — kept here so this repo
+ships zero runtime dependencies on third-party Substack libraries. Attribution
+preserved in each file's module docstring.

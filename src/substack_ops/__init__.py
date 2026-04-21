@@ -1,8 +1,7 @@
-"""substack-ops: CLI for managing your Substack content.
+"""substack-ops: standalone Substack CLI + 26-tool MCP server.
 
-Standalone toolkit (no runtime dep on NHagar/substack_api or postcli/substack)
-that handles posts, notes, comments, replies, engagement verbs, automations,
-MCP server, and a Textual TUI.
+Posts, notes, comments, replies, engagement verbs, automations, MCP server,
+and a Textual TUI. MIT licensed, zero third-party Substack runtime deps.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.3"

@@ -1,6 +1,7 @@
-"""Extended Substack client (standalone, no NHagar/postcli runtime dep).
+"""Extended Substack client.
 
-Wraps vendored `Newsletter` / `Post` and adds every endpoint we need:
+Wraps the vendored `Newsletter` / `Post` helpers and adds every endpoint we
+need:
 - post reads (list/show/content/search/paywalled/podcasts)
 - post writes (react/restack/comment)
 - comment reads + writes + delete (host-aware)

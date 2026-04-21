@@ -1,7 +1,7 @@
 [project]
 name = "substack-ops"
-version = "0.2.0"
-description = "Standalone Substack CLI: posts, notes, comments, replies, engagement, automations, MCP server, TUI"
+version = "0.3.0"
+description = "Standalone Substack CLI + 26-tool MCP server. Your IDE drafts the replies. Zero AI API keys."
 readme = "README.md"
 authors = [
     { name = "Ketan Chavan", email = "ketan.chavan.test@gmail.com" }
@@ -17,10 +17,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ai = [
-    "anthropic>=0.39.0",
-    "openai>=1.40.0",
-]
 tui = [
     "textual>=0.80.0",
 ]

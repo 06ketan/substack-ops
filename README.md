@@ -1,8 +1,14 @@
 # substack-ops
 
-Standalone Python toolkit for everything you can do on Substack from a terminal —
-**plus a 26-tool MCP server** that turns Cursor / Claude Desktop / Claude Code
-into a Substack reply console with no API keys.
+[![PyPI version](https://img.shields.io/pypi/v/substack-ops?color=ff6719&label=pypi)](https://pypi.org/project/substack-ops/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![MCP compatible](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
+[![CI](https://github.com/06ketan/substack-ops/actions/workflows/test.yml/badge.svg)](https://github.com/06ketan/substack-ops/actions/workflows/test.yml)
+
+> **Standalone Substack CLI + 26-tool MCP server. Your IDE drafts the replies. Zero AI API keys.**
+
+Site → **[substack-ops.chavan.in](https://substack-ops.chavan.in)** · Source → **[06ketan/substack-ops](https://github.com/06ketan/substack-ops)**
 
 Posts, notes, comments, replies, reactions, restacks, recommendations, search,
 profiles, feeds, automations, MCP server, Textual TUI.
@@ -12,26 +18,24 @@ upstream code is vendored and ported to `httpx` under
 `src/substack_ops/_substack/`. AGPL-clean: we re-implement against the same
 documented endpoints; we do not copy AGPL-licensed code from postcli.
 
-## TL;DR — MCP-native (no API key)
+## TL;DR — MCP-native (no API key, one command)
 
 ```bash
-cd substack-ops
-uv sync --extra mcp
-uv run substack-ops auth verify          # confirm cookies work
-uv run substack-ops mcp install cursor   # or: claude-desktop, claude-code, print
+uvx substack-ops mcp install cursor          # or claude-desktop, claude-code, print
 # Restart your host. Then in chat:
 #   "list unanswered comments on post 193866852"
 #   "draft a warm reply to comment 12345"
 #   "post that draft"
 ```
 
-Your **host's** LLM (Cursor's, Claude's) does the drafting — substack-ops just
-provides the tools. **No `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` needed.**
+Your **host's** LLM (Cursor's, Claude's) does the drafting via the
+`propose_reply` / `confirm_reply` tools. No `ANTHROPIC_API_KEY` /
+`OPENAI_API_KEY` needed.
 
-## Setup
+## Setup (dev / from source)
 
 ```bash
-cd substack-ops
+git clone https://github.com/06ketan/substack-ops && cd substack-ops
 uv sync
 uv sync --extra mcp     # mcp SDK for the MCP server (recommended)
 uv sync --extra tui     # textual for the TUI

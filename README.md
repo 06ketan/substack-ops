@@ -1,28 +1,45 @@
 # substack-ops
 
-Standalone Python toolkit for everything you can do on Substack from a terminal:
-posts, notes, comments, replies, reactions, restacks, recommendations, search,
-profiles, feeds, automations, an MCP server, and a Textual TUI.
+Standalone Python toolkit for everything you can do on Substack from a terminal —
+**plus a 26-tool MCP server** that turns Cursor / Claude Desktop / Claude Code
+into a Substack reply console with no API keys.
+
+Posts, notes, comments, replies, reactions, restacks, recommendations, search,
+profiles, feeds, automations, MCP server, Textual TUI.
 
 **No runtime dependency on `NHagar/substack_api` or `postcli/substack`.** All
-needed upstream code is vendored and ported to `httpx` under
+upstream code is vendored and ported to `httpx` under
 `src/substack_ops/_substack/`. AGPL-clean: we re-implement against the same
 documented endpoints; we do not copy AGPL-licensed code from postcli.
+
+## TL;DR — MCP-native (no API key)
+
+```bash
+cd substack-ops
+uv sync --extra mcp
+uv run substack-ops auth verify          # confirm cookies work
+uv run substack-ops mcp install cursor   # or: claude-desktop, claude-code, print
+# Restart your host. Then in chat:
+#   "list unanswered comments on post 193866852"
+#   "draft a warm reply to comment 12345"
+#   "post that draft"
+```
+
+Your **host's** LLM (Cursor's, Claude's) does the drafting — substack-ops just
+provides the tools. **No `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` needed.**
 
 ## Setup
 
 ```bash
 cd substack-ops
 uv sync
-uv sync --extra ai      # anthropic + openai for AI reply modes
+uv sync --extra mcp     # mcp SDK for the MCP server (recommended)
 uv sync --extra tui     # textual for the TUI
-uv sync --extra mcp     # mcp SDK for the MCP server
 uv sync --extra chrome  # pycryptodome + keyring for Chrome cookie auto-grab
 ```
 
 Auth defaults to `~/.cursor/mcp.json`'s `mcpServers.substack-api.env`. Override
-with env or `.env`. Or use one of the 3 new auth flows in `auth login` /
-`auth setup`.
+with env or `.env`. Or use one of the auth flows in `auth login` / `auth setup`.
 
 ```bash
 uv run substack-ops auth verify
@@ -107,33 +124,61 @@ Custom YAML rules under `~/.config/substack-ops/auto/*.yaml`. Loop with
 ## MCP server
 
 ```bash
-substack-ops mcp --list-tools     # 23 tools
-substack-ops mcp                   # stdio server
+substack-ops mcp install cursor              # auto-add to ~/.cursor/mcp.json
+substack-ops mcp install claude-desktop      # auto-add to claude_desktop_config.json
+substack-ops mcp install claude-code         # uses `claude mcp add` under the hood
+substack-ops mcp install print               # print the snippet only
+substack-ops mcp install cursor --dry-run    # preview without writing
+substack-ops mcp serve                       # stdio server
+substack-ops mcp list-tools                  # 26 tools
 ```
 
-Cursor / Claude Desktop config:
+Manual config snippet (if you prefer):
 
 ```json
 {
   "mcpServers": {
     "substack-ops": {
-      "command": "uv",
-      "args": ["--directory", "/abs/path/to/substack-ops", "run", "substack-ops", "mcp"]
+      "command": "substack-ops",
+      "args": ["mcp", "serve"]
     }
   }
 }
 ```
 
 If the `mcp` SDK is not installed, the server falls back to a minimal
-`stdin/stdout` JSON-line dispatcher that's still useful for scripting and
-tests:
+`stdin/stdout` JSON-line dispatcher that's still useful for scripting:
 
 ```bash
-echo '{"tool":"list_posts","args":{"limit":3}}' | substack-ops mcp
+echo '{"tool":"list_posts","args":{"limit":3}}' | substack-ops mcp serve
 ```
 
-The 4 tools that are unique to substack-ops (not in postcli):
-`bulk_draft_replies`, `send_approved_drafts`, `audit_search`, `dedup_status`.
+### MCP-native draft loop (no API key)
+
+3 tools designed to let your **host** LLM draft for you:
+
+| Tool | What it does |
+|------|--------------|
+| `get_unanswered_comments` | Returns the worklist: comments where you have not yet replied (any depth). |
+| `propose_reply` | Dry-run only. Returns a `token` + payload preview. **No write.** |
+| `confirm_reply` | Posts a previously-proposed reply by token. Idempotent via dedup DB. Token TTL 5 min. |
+
+Tools unique to substack-ops (not in postcli/NHagar):
+`bulk_draft_replies`, `send_approved_drafts`, `audit_search`, `dedup_status`,
+`get_unanswered_comments`, `propose_reply`, `confirm_reply`.
+
+## LLM strategy
+
+Two layers, both free:
+
+1. **MCP-native (default).** Host LLM drafts via `propose_reply` /
+   `confirm_reply`. No env vars, no API key. Use this for interactive replies.
+2. **Subprocess CLI (daemon path).** For `reply auto` / `auto daemon` when
+   no human is in the loop. Auto-detects `claude` (Claude Code),
+   `cursor-agent`, or `codex` on PATH. Override with `SUBSTACK_OPS_LLM_CMD`.
+
+There is no paid-API-key path. If you want one, vendor the old `_anthropic` /
+`_openai` methods from `substack-ops` v0.2.0 yourself.
 
 ## Textual TUI
 

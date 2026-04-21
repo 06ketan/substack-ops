@@ -105,6 +105,7 @@ def post_reply(
     original_author: str | None = None,
     original_body: str | None = None,
     force: bool = False,
+    pub: str | None = None,
 ) -> dict[str, Any]:
     """Single point of egress for any post-comment reply.
 
@@ -136,6 +137,7 @@ def post_reply(
         body=body,
         parent_id=parent_id,
         dry_run=dry_run,
+        pub=pub,
     )
 
     status = "dry_run" if dry_run else "posted"

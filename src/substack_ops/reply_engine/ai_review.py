@@ -30,7 +30,11 @@ def run_review(
 ) -> list[dict[str, Any]]:
     llm = LLM.from_env(model)
     if llm.provider == "none":
-        raise RuntimeError("ai_review needs an LLM key. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.")
+        raise RuntimeError(
+            "ai_review needs an LLM. Install claude/cursor-agent/codex on PATH "
+            "or set SUBSTACK_OPS_LLM_CMD='your-cli {prompt}'.\n"
+            "Tip: from your chat app, use the MCP propose_reply / confirm_reply tools instead."
+        )
 
     results: list[dict[str, Any]] = []
     with SubstackClient.create() as c:

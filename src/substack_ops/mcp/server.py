@@ -1,7 +1,7 @@
 """MCP stdio server for substack-ops.
 
-20 tools wired to SubstackClient. The server uses the official `mcp` Python
-SDK if available, otherwise raises a clear install message.
+26 tools wired to SubstackClient. The server uses the official `mcp` Python
+SDK if available, otherwise falls back to a JSON-line dispatcher on stdin/stdout.
 
 Tools:
   reads:    test_connection, get_own_profile, get_profile, list_posts, get_post,
@@ -10,14 +10,33 @@ Tools:
   writes:   publish_note, reply_to_note, comment_on_post, react_to_post,
             react_to_comment, restack_post, restack_note, delete_comment
   unique:   bulk_draft_replies, send_approved_drafts, audit_search, dedup_status
+  draft:    get_unanswered_comments, propose_reply, confirm_reply
+            (host LLM drafts, no API key needed)
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
+
+_PROPOSAL_TTL = 300.0
+_proposals: dict[str, dict[str, Any]] = {}
+
+
+def _purge_expired() -> None:
+    now = time.time()
+    expired = [t for t, p in _proposals.items() if p["expires"] < now]
+    for t in expired:
+        _proposals.pop(t, None)
+
+
+def _make_token(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:16]
 
 TOOLS: dict[str, dict[str, Any]] = {
     "test_connection": {
@@ -264,6 +283,56 @@ TOOLS: dict[str, dict[str, Any]] = {
         "description": "Counts in the dedup SQLite DB.",
         "input_schema": {"type": "object", "properties": {}},
     },
+    # ------- MCP-native draft loop (host LLM does the drafting) -------
+    "get_unanswered_comments": {
+        "description": (
+            "Return comments on a post where the authed user has NOT yet replied. "
+            "Use this as the worklist: read each, draft a reply in your own context, "
+            "then call propose_reply -> confirm_reply for each one you want to send."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "post_id": {"type": "string"},
+                "pub": {"type": "string"},
+                "limit": {"type": "integer", "default": 50},
+            },
+            "required": ["post_id"],
+        },
+    },
+    "propose_reply": {
+        "description": (
+            "Dry-run a reply. Returns a token + dedup hash + the would-be payload. "
+            "NO Substack write. Show the preview to the user. On their approval, "
+            "call confirm_reply with the same token. Token expires in 5 min."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["post", "note"], "default": "post"},
+                "post_id": {"type": "string"},
+                "note_id": {"type": "string"},
+                "parent_comment_id": {"type": "string"},
+                "body": {"type": "string"},
+                "pub": {"type": "string"},
+            },
+            "required": ["body"],
+        },
+    },
+    "confirm_reply": {
+        "description": (
+            "Post a previously-proposed reply by token. Idempotent via dedup DB. "
+            "Returns the live Substack response (or {deduped: true} if already posted)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "token": {"type": "string"},
+                "force": {"type": "boolean", "default": False},
+            },
+            "required": ["token"],
+        },
+    },
 }
 
 
@@ -287,6 +356,11 @@ def _dispatch(name: str, args: dict[str, Any]) -> Any:
         )
     if name == "dedup_status":
         return DedupDB().status()
+
+    if name == "propose_reply":
+        return _propose_reply(args)
+    if name == "confirm_reply":
+        return _confirm_reply(args)
 
     if name == "bulk_draft_replies":
         from substack_ops.reply_engine.ai_bulk import generate_drafts, generate_note_drafts
@@ -342,6 +416,41 @@ def _dispatch(name: str, args: dict[str, Any]) -> Any:
             return c.list_notes(limit=args.get("limit", 20))
         if name == "list_comments":
             return c.get_comments(args["post_id"], pub=args.get("pub"))
+        if name == "get_unanswered_comments":
+            data = c.get_comments(args["post_id"], pub=args.get("pub"))
+            items = data.get("comments") or data.get("items") or []
+            my_id = c.cfg.user_id
+            unanswered: list[dict[str, Any]] = []
+
+            def _has_my_reply(children: list[dict[str, Any]]) -> bool:
+                for ch in children or []:
+                    if ch.get("user_id") == my_id:
+                        return True
+                    if _has_my_reply(ch.get("children") or []):
+                        return True
+                return False
+
+            def _walk(comments: list[dict[str, Any]]) -> None:
+                for cmt in comments:
+                    if cmt.get("user_id") == my_id:
+                        _walk(cmt.get("children") or [])
+                        continue
+                    if not _has_my_reply(cmt.get("children") or []):
+                        unanswered.append(
+                            {
+                                "id": cmt.get("id"),
+                                "body": cmt.get("body"),
+                                "name": cmt.get("name"),
+                                "handle": cmt.get("handle"),
+                                "user_id": cmt.get("user_id"),
+                                "date": cmt.get("date"),
+                                "depth": cmt.get("ancestor_path", "").count(".") if cmt.get("ancestor_path") else 0,
+                            }
+                        )
+                    _walk(cmt.get("children") or [])
+
+            _walk(items)
+            return unanswered[: args.get("limit", 50)]
         if name == "get_feed":
             return c.get_feed(tab=args.get("tab", "for-you"), limit=args.get("limit", 20))
         if name == "publish_note":
@@ -403,6 +512,94 @@ def _dispatch(name: str, args: dict[str, Any]) -> Any:
             )
 
     raise ValueError(f"unknown tool: {name}")
+
+
+def _propose_reply(args: dict[str, Any]) -> dict[str, Any]:
+    """Build a dry-run preview, store it under a token, return token + preview."""
+    _purge_expired()
+    kind = (args.get("kind") or "post").lower()
+    body = args["body"]
+    if kind == "note":
+        note_id = args.get("note_id") or args.get("parent_comment_id")
+        if not note_id:
+            raise ValueError("propose_reply(kind=note) requires note_id or parent_comment_id")
+        payload = {
+            "kind": "note",
+            "note_id": str(note_id),
+            "parent_comment_id": int(args.get("parent_comment_id") or note_id),
+            "body": body,
+        }
+    else:
+        post_id = args.get("post_id")
+        parent = args.get("parent_comment_id")
+        if not post_id:
+            raise ValueError("propose_reply(kind=post) requires post_id")
+        if not parent:
+            raise ValueError(
+                "propose_reply(kind=post) requires parent_comment_id "
+                "(use comment_on_post for new top-level comments)"
+            )
+        payload = {
+            "kind": "post",
+            "post_id": str(post_id),
+            "parent_comment_id": int(parent),
+            "body": body,
+            "pub": args.get("pub"),
+        }
+    token = _make_token(payload)
+    _proposals[token] = {
+        "payload": payload,
+        "expires": time.time() + _PROPOSAL_TTL,
+        "created": time.time(),
+    }
+    return {
+        "token": token,
+        "expires_in": int(_PROPOSAL_TTL),
+        "preview": payload,
+    }
+
+
+def _confirm_reply(args: dict[str, Any]) -> dict[str, Any]:
+    """Look up token, post for real via reply_engine.base (dedup + audit + ancestor_path)."""
+    _purge_expired()
+    token = args["token"]
+    proposal = _proposals.get(token)
+    if not proposal:
+        raise ValueError(
+            f"unknown or expired token: {token} (proposals expire after "
+            f"{int(_PROPOSAL_TTL)}s)"
+        )
+    payload = proposal["payload"]
+    force = bool(args.get("force", False))
+
+    from substack_ops.client import SubstackClient
+    from substack_ops.reply_engine.base import post_note_reply, post_reply
+
+    with SubstackClient.create() as c:
+        if payload["kind"] == "note":
+            res = post_note_reply(
+                c,
+                note_id=int(payload["note_id"]),
+                parent_comment_id=int(payload["parent_comment_id"]),
+                body=payload["body"],
+                dry_run=False,
+                force=force,
+                mode="mcp:confirm_reply",
+            )
+        else:
+            res = post_reply(
+                c,
+                post_id=int(payload["post_id"]),
+                parent_id=int(payload["parent_comment_id"]),
+                body=payload["body"],
+                dry_run=False,
+                force=force,
+                mode="mcp:confirm_reply",
+                pub=payload.get("pub"),
+            )
+
+    _proposals.pop(token, None)
+    return {"token": token, "result": res}
 
 
 def serve() -> None:

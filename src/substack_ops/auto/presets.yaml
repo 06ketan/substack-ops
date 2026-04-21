@@ -1,0 +1,22 @@
+presets:
+  - name: like-back
+    trigger: note_liked_by
+    action: react_to_their_latest_note
+    description: When someone likes one of your notes, like their latest note back.
+
+  - name: auto-reply
+    trigger: note_liked_by
+    action: reply_to_their_latest_note
+    template: thanks_short
+    description: Reply with a templated thank-you to anyone who likes your notes.
+
+  - name: auto-restack
+    trigger: new_note_from
+    watchlist: []
+    action: restack_note
+    description: Auto-restack new notes from handles in your watchlist.
+
+  - name: follow-back
+    trigger: new_follower
+    action: follow
+    description: Follow back anyone who follows you.

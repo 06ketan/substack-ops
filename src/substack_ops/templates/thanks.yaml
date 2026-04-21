@@ -1,0 +1,22 @@
+rules:
+  - name: thanks
+    match:
+      any: ["thank", "thanks", "appreciate", "love this", "great post"]
+    replies:
+      - "Thanks for reading — means a lot."
+      - "Glad it landed for you."
+      - "Appreciate you taking the time to share that."
+
+  - name: question
+    match:
+      any: ["?", "how do you", "what about", "why ", "could you"]
+    replies:
+      - "Good question — let me dig into that and write a follow-up."
+      - "Solid question. Thinking about it. Will share more soon."
+
+  - name: default
+    match:
+      any: ["*"]
+    replies:
+      - "Appreciate you commenting."
+      - "Thanks for stopping by."

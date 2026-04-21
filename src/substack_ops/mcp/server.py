@@ -342,6 +342,9 @@ def list_tool_names() -> list[str]:
 
 def _dispatch(name: str, args: dict[str, Any]) -> Any:
     """Dispatch one tool call to the underlying client/audit/dedup."""
+    if name not in TOOLS:
+        raise ValueError(f"unknown tool: {name}")
+
     from substack_ops.audit import search_audit
     from substack_ops.client import SubstackClient
     from substack_ops.dedup import DedupDB

@@ -34,7 +34,10 @@ def generate_drafts(
 ) -> int:
     llm = LLM.from_env(model)
     if llm.provider == "none":
-        raise RuntimeError("ai_bulk needs an LLM key.")
+        raise RuntimeError(
+            "ai_bulk needs an LLM. Install claude/cursor-agent/codex on PATH "
+            "or set SUBSTACK_OPS_LLM_CMD='your-cli {prompt}'."
+        )
 
     drafts: list[dict[str, Any]] = []
     with SubstackClient.create() as c:
@@ -82,7 +85,10 @@ def generate_note_drafts(
     """
     llm = LLM.from_env(model)
     if llm.provider == "none":
-        raise RuntimeError("ai_bulk needs an LLM key.")
+        raise RuntimeError(
+            "ai_bulk needs an LLM. Install claude/cursor-agent/codex on PATH "
+            "or set SUBSTACK_OPS_LLM_CMD='your-cli {prompt}'."
+        )
 
     drafts: list[dict[str, Any]] = []
     with SubstackClient.create() as c:

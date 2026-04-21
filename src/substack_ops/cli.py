@@ -28,7 +28,15 @@ auth_app = typer.Typer(no_args_is_help=True, help="Authentication commands")
 posts_app = typer.Typer(no_args_is_help=True, help="Post commands")
 comments_app = typer.Typer(no_args_is_help=True, help="Comment commands")
 notes_app = typer.Typer(no_args_is_help=True, help="Note commands")
-reply_app = typer.Typer(no_args_is_help=True, help="Reply to comments (4 modes)")
+reply_app = typer.Typer(
+    no_args_is_help=True,
+    help=(
+        "Reply to comments. PREFERRED: connect MCP and use the propose_reply / "
+        "confirm_reply tools from your IDE/desktop chat — no env vars needed.\n"
+        "These CLI subcommands need a host LLM CLI (claude/cursor-agent/codex) "
+        "on PATH (or SUBSTACK_OPS_LLM_CMD set)."
+    ),
+)
 podcasts_app = typer.Typer(no_args_is_help=True, help="Podcast commands")
 recs_app = typer.Typer(no_args_is_help=True, help="Recommendations")
 authors_app = typer.Typer(no_args_is_help=True, help="Authors of a publication")
@@ -896,7 +904,11 @@ def reply_review_cmd(
     rate: float = typer.Option(30.0, "--rate"),
     model: str | None = typer.Option(None, "--model"),
 ) -> None:
-    """Interactive: AI drafts, you accept/edit/skip/quit per comment."""
+    """Interactive: AI drafts, you accept/edit/skip/quit per comment.
+
+    Uses host CLI (claude/cursor-agent/codex) on PATH for drafts.
+    For a no-setup flow, use MCP propose_reply/confirm_reply from your chat app.
+    """
     from substack_ops.reply_engine.ai_review import run_review
     results = run_review(
         post_id=post_id, dry_run=dry_run, rate_seconds=rate, model=model
@@ -910,7 +922,10 @@ def reply_bulk_cmd(
     out: Path = typer.Option(Path("drafts.json"), "--out"),
     model: str | None = typer.Option(None, "--model"),
 ) -> None:
-    """Generate AI drafts for every POST comment into drafts.json."""
+    """Generate AI drafts for every POST comment into drafts.json.
+
+    Uses host CLI (claude/cursor-agent/codex) on PATH for drafts.
+    """
     from substack_ops.reply_engine.ai_bulk import generate_drafts
     n = generate_drafts(post_id=post_id, out=out, model=model)
     console.print(f"[green]wrote[/] {n} drafts to {out}")
@@ -926,7 +941,10 @@ def reply_note_bulk_cmd(
     out: Path = typer.Option(Path("note-drafts.json"), "--out"),
     model: str | None = typer.Option(None, "--model"),
 ) -> None:
-    """Generate AI drafts for every reply on a NOTE into drafts.json."""
+    """Generate AI drafts for every reply on a NOTE into drafts.json.
+
+    Uses host CLI (claude/cursor-agent/codex) on PATH for drafts.
+    """
     from substack_ops.reply_engine.ai_bulk import generate_note_drafts
     n = generate_note_drafts(note_id=note_id, out=out, model=model)
     console.print(f"[green]wrote[/] {n} drafts to {out}")
@@ -1085,18 +1103,67 @@ def auto_daemon(
     run_daemon(name=name, interval=interval, dry_run=dry_run)
 
 
-@app.command("mcp")
-def mcp_cmd(
+mcp_app = typer.Typer(
+    no_args_is_help=False,
+    invoke_without_command=True,
+    help="MCP server (run / install / list-tools)",
+)
+app.add_typer(mcp_app, name="mcp")
+
+
+@mcp_app.callback()
+def mcp_default(
+    ctx: typer.Context,
     list_tools: bool = typer.Option(False, "--list-tools", help="Print tool names and exit"),
 ) -> None:
-    """Run the substack-ops MCP stdio server."""
+    """Default: run the stdio server. Use subcommands for install/serve."""
+    if ctx.invoked_subcommand is not None:
+        return
     from substack_ops.mcp.server import list_tool_names, serve
 
     if list_tools:
-        for name in list_tool_names():
-            console.print(name)
+        for n in list_tool_names():
+            console.print(n)
         return
     serve()
+
+
+@mcp_app.command("serve")
+def mcp_serve_cmd() -> None:
+    """Run the stdio server (explicit form)."""
+    from substack_ops.mcp.server import serve
+
+    serve()
+
+
+@mcp_app.command("list-tools")
+def mcp_list_tools_cmd() -> None:
+    """Print all MCP tool names."""
+    from substack_ops.mcp.server import list_tool_names
+
+    for n in list_tool_names():
+        console.print(n)
+
+
+@mcp_app.command("install")
+def mcp_install_cmd(
+    host: str = typer.Argument(
+        ...,
+        help="cursor | claude-desktop | claude-code | codex | print",
+    ),
+    name: str = typer.Option("substack-ops", "--name", help="Server name in host config"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print config, don't write"),
+) -> None:
+    """Add substack-ops to an MCP host's config file. Idempotent + backed up."""
+    from substack_ops.mcp.install import install_to_host
+
+    info = install_to_host(host=host, name=name, dry_run=dry_run)
+    t = Table(show_header=False, title=f"mcp install -> {host}")
+    t.add_column(style="bold cyan")
+    t.add_column()
+    for k, v in info.items():
+        t.add_row(k, str(v))
+    console.print(t)
 
 
 @app.command("tui")

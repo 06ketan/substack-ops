@@ -1,10 +1,33 @@
-# Python-generated files
+# Python
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.so
+.Python
 build/
 dist/
-wheels/
-*.egg-info
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
-# Virtual environments
-.venv
+# uv
+.venv/
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Local secrets / runtime
+.env
+.env.local
+audit.jsonl
+dedup.db
+*.cookie
+
+# Build artifacts
+*.tar.gz
+*.whl

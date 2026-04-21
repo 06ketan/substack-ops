@@ -9,11 +9,7 @@ jobs:
   build-and-publish:
     name: Build and publish to PyPI
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/substack-ops
     permissions:
-      id-token: write       # OIDC for PyPI Trusted Publisher
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -38,5 +34,13 @@ jobs:
       - name: Build wheel + sdist
         run: uv build
 
-      - name: Publish to PyPI (Trusted Publisher)
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish to PyPI
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "$UV_PUBLISH_TOKEN" ]; then
+            echo "::warning::PYPI_API_TOKEN secret not set — skipping publish."
+            echo "::warning::Add the secret in repo Settings → Secrets and variables → Actions."
+            exit 0
+          fi
+          uv publish

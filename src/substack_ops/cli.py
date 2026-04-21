@@ -121,7 +121,7 @@ def auth_verify(
 
 @auth_app.command("test")
 def auth_test(json_out: bool = typer.Option(False, "--json")) -> None:
-    """Alias for `auth verify` (postcli parity)."""
+    """Alias for `auth verify`. Exits non-zero on failure (CI-friendly)."""
     auth_verify(json_out=json_out, mcp_path=None)
 
 
@@ -325,7 +325,7 @@ def posts_get(
     pub: str | None = typer.Option(None, "--pub"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
-    """Fetch a post by slug (postcli alias for `posts show`)."""
+    """Fetch a post by slug (alias for `posts show` when you only have a slug)."""
     with SubstackClient.create() as c:
         meta = c.get_post(slug, pub=pub)
     if json_out:

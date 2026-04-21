@@ -11,9 +11,9 @@ from substack_ops.audit import DEFAULT_AUDIT_PATH
 from substack_ops.mcp.server import TOOLS, _dispatch, list_tool_names
 
 
-def test_20_tools_registered():
+def test_26_tools_registered():
     names = list_tool_names()
-    assert len(names) == 23  # 19 read/write postcli-parity + 4 unique = 23 (postcli has 16; we expanded)
+    assert len(names) == 26  # 19 parity + 4 unique + 3 MCP-native draft tools
     for spec in TOOLS.values():
         assert "description" in spec
         assert "input_schema" in spec
@@ -29,6 +29,7 @@ def test_required_tools_present():
         "restack_note", "delete_comment",
         "bulk_draft_replies", "send_approved_drafts",
         "audit_search", "dedup_status",
+        "get_unanswered_comments", "propose_reply", "confirm_reply",
     }
     assert required.issubset(set(list_tool_names()))
 

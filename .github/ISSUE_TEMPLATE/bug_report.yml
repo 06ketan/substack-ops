@@ -1,0 +1,70 @@
+name: Bug Report
+description: Report a bug, broken behavior, or unexpected error
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. **Do not paste your
+        `SUBSTACK_SESSION_TOKEN` or any cookie value in this issue** — see
+        [SECURITY.md](../SECURITY.md) for the private disclosure flow.
+
+  - type: input
+    id: version
+    attributes:
+      label: substack-ops version
+      description: "Output of `substack-ops --version` (or `uvx substack-ops --version`)"
+      placeholder: "0.3.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How are you running substack-ops?
+      options:
+        - "uvx substack-ops (PyPI)"
+        - "pip install substack-ops"
+        - "git clone + uv run"
+        - "Cursor MCP / Claude Desktop MCP"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug — what you expected vs what occurred.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal command(s) or MCP tool call(s) that reproduce the bug
+      placeholder: |
+        1. `substack-ops list_posts`
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error output
+      description: Paste any relevant traceback or audit.jsonl line. **Redact session tokens.**
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: "OS, Python version, IDE / MCP host (if applicable)"
+      placeholder: "macOS 14.5, Python 3.12.5, Cursor 0.42"
+    validations:
+      required: true

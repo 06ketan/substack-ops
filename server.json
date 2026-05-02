@@ -8,13 +8,13 @@
     "url": "https://github.com/06ketan/substack-ops",
     "source": "github"
   },
-  "version": "0.3.3",
+  "version": "0.3.4",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "substack-ops",
-      "version": "0.3.3",
+      "version": "0.3.4",
       "transport": {
         "type": "stdio"
       },
@@ -66,7 +66,7 @@
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "tool": "manual",
-      "version": "0.3.3"
+      "version": "0.3.4"
     }
   }
 }

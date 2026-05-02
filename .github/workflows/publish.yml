@@ -54,7 +54,20 @@ jobs:
             echo "::warning::Add the secret in repo Settings → Secrets and variables → Actions."
             exit 0
           fi
-          uv publish
+          # Idempotent publish: treat "file already exists" as success so re-runs
+          # of the workflow (after a manual local publish, or a partial earlier run)
+          # don't block downstream MCP Registry sync + GitHub Release steps.
+          set +e
+          PUBLISH_OUTPUT=$(uv publish 2>&1)
+          PUBLISH_EXIT=$?
+          echo "$PUBLISH_OUTPUT"
+          if [ $PUBLISH_EXIT -ne 0 ]; then
+            if echo "$PUBLISH_OUTPUT" | grep -qi "File already exists"; then
+              echo "::notice::PyPI already has this version — treating as success and continuing."
+              exit 0
+            fi
+            exit $PUBLISH_EXIT
+          fi
 
       - name: Sync version to server.json
         if: github.event_name == 'push' && env.DRY_RUN != 'true'

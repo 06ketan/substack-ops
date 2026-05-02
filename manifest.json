@@ -1,0 +1,79 @@
+{
+  "manifest_version": "0.4",
+  "name": "substack-ops",
+  "display_name": "Substack-OPS",
+  "version": "0.3.3",
+  "description": "Substack CLI + 26-tool MCP server. Your IDE drafts replies via propose_reply. No AI API keys.",
+  "long_description": "Substack-OPS is a standalone Substack CLI and 26-tool MCP server. Your IDE (Claude Desktop / Cursor) drafts the replies — there are zero AI API keys, no paid LLM dependencies, and no hidden services. The MCP server exposes propose_reply / confirm_reply triage workflow plus inbox, post, draft, and reply tooling that talks directly to Substack's web endpoints. Authenticate once with `substack-ops auth login --browser chrome` to grab the session cookie automatically, or set SUBSTACK_PUBLICATION_URL / SUBSTACK_USER_ID / SUBSTACK_SESSION_TOKEN. Distributed via PyPI (`uvx substack-ops`), the official MCP Registry, and Glama.",
+  "author": {
+    "name": "Ketan Chavan",
+    "email": "ketan2.chavan@ril.com",
+    "url": "https://github.com/06ketan"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/06ketan/substack-ops.git"
+  },
+  "homepage": "https://substack-ops.chavan.in",
+  "documentation": "https://github.com/06ketan/substack-ops#readme",
+  "support": "https://github.com/06ketan/substack-ops/issues",
+  "license": "MIT",
+  "privacy_policies": [
+    "https://github.com/06ketan/substack-ops/blob/main/PRIVACY.md"
+  ],
+  "keywords": [
+    "substack",
+    "newsletter",
+    "comments",
+    "reply-triage",
+    "cli",
+    "mcp",
+    "model-context-protocol",
+    "cursor",
+    "claude-desktop"
+  ],
+  "server": {
+    "type": "python",
+    "entry_point": "src/substack_ops/mcp/server.py",
+    "mcp_config": {
+      "command": "uvx",
+      "args": ["substack-ops", "mcp", "serve"],
+      "env": {
+        "SUBSTACK_PUBLICATION_URL": "${user_config.publication_url}",
+        "SUBSTACK_USER_ID": "${user_config.user_id}",
+        "SUBSTACK_SESSION_TOKEN": "${user_config.session_token}"
+      }
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "python": ">=3.12"
+    }
+  },
+  "user_config": {
+    "publication_url": {
+      "type": "string",
+      "title": "Publication URL",
+      "description": "Your Substack publication URL (e.g. https://you.substack.com/). Optional if you've already run `substack-ops auth login`.",
+      "required": false,
+      "default": ""
+    },
+    "user_id": {
+      "type": "string",
+      "title": "User ID",
+      "description": "Your Substack numeric user id. Optional if your mcp.json already has it under mcpServers.substack-api.env.",
+      "required": false,
+      "default": ""
+    },
+    "session_token": {
+      "type": "string",
+      "title": "Session Token",
+      "description": "Substack session cookie value (the s%3A... string). Easier path: run `substack-ops auth login --browser chrome` and the cookie is auto-grabbed.",
+      "sensitive": true,
+      "required": false,
+      "default": ""
+    }
+  }
+}

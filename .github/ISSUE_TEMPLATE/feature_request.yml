@@ -1,0 +1,44 @@
+name: Feature Request
+description: Suggest a new tool, flag, or behavior
+title: "[feat] "
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: |
+        Describe the use case. "I want to do X" is more useful than "Add tool Y".
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should substack-ops behave? CLI command? MCP tool? New flag?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or other tools did you try?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface does this affect?
+      multiple: true
+      options:
+        - "CLI"
+        - "MCP server (tools)"
+        - "TUI"
+        - "Auth / cookie capture"
+        - "Reply engine"
+        - "Documentation"
+    validations:
+      required: true

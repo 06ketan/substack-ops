@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security disclosure (private)
+    url: mailto:ketan2.chavan@ril.com
+    about: Vulnerabilities, leaked-token paths, anything that should not be public. See SECURITY.md.
+  - name: Community discussion
+    url: https://substack-ops.chavan.in
+    about: Questions about usage and roadmap.

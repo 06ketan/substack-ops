@@ -6,11 +6,17 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![MCP compatible](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-verified-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.06ketan/substack-ops)
+[![Glama MCP server](https://glama.ai/mcp/servers/06ketan/substack-ops/badges/score.svg)](https://glama.ai/mcp/servers/06ketan/substack-ops)
 [![CI](https://github.com/06ketan/substack-ops/actions/workflows/test.yml/badge.svg)](https://github.com/06ketan/substack-ops/actions/workflows/test.yml)
 
 > **Standalone Substack CLI + 26-tool MCP server. Your IDE drafts the replies. Zero AI API keys.**
 
-Site → **[substack-ops.chavan.in](https://substack-ops.chavan.in)** · Source → **[06ketan/substack-ops](https://github.com/06ketan/substack-ops)**
+Site → **[substack-ops.chavan.in](https://substack-ops.chavan.in)** · Source → **[06ketan/substack-ops](https://github.com/06ketan/substack-ops)** · Glama → **[mcp/servers/06ketan/substack-ops](https://glama.ai/mcp/servers/06ketan/substack-ops)**
+
+<a href="https://glama.ai/mcp/servers/06ketan/substack-ops">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/06ketan/substack-ops/badges/card.svg" alt="substack-ops MCP server card on Glama" />
+</a>
 
 Posts, notes, comments, replies, reactions, restacks, recommendations, search,
 profiles, feeds, automations, MCP server, Textual TUI. One Python install, one

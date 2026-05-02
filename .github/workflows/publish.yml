@@ -4,13 +4,22 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (skip PyPI / MCP Registry publish, still build .mcpb)"
+        type: boolean
+        default: false
 
 jobs:
   build-and-publish:
-    name: Build and publish to PyPI
+    name: Build and publish to PyPI + MCP Registry + GitHub Release
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
+      id-token: write
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,6 +32,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Verify tag matches pyproject version
+        if: github.event_name == 'push'
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           PYV=$(uv run python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
@@ -35,6 +45,7 @@ jobs:
         run: uv build
 
       - name: Publish to PyPI
+        if: env.DRY_RUN != 'true'
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         run: |
@@ -44,3 +55,76 @@ jobs:
             exit 0
           fi
           uv publish
+
+      - name: Sync version to server.json
+        if: github.event_name == 'push' && env.DRY_RUN != 'true'
+        run: |
+          if [ ! -f server.json ]; then
+            echo "::warning::no server.json — skipping MCP Registry sync"
+            exit 0
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          jq --arg v "$VERSION" '.version = $v | (.packages[0].version) = $v' server.json > server.tmp.json
+          mv server.tmp.json server.json
+
+      - name: Install mcp-publisher
+        if: github.event_name == 'push' && env.DRY_RUN != 'true'
+        run: |
+          if [ ! -f server.json ]; then
+            exit 0
+          fi
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          chmod +x mcp-publisher
+
+      - name: Authenticate to MCP Registry (OIDC)
+        if: github.event_name == 'push' && env.DRY_RUN != 'true'
+        run: |
+          if [ ! -f server.json ] || [ ! -f mcp-publisher ]; then
+            exit 0
+          fi
+          ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        if: github.event_name == 'push' && env.DRY_RUN != 'true'
+        run: |
+          if [ ! -f server.json ] || [ ! -f mcp-publisher ]; then
+            exit 0
+          fi
+          ./mcp-publisher publish
+
+      - name: Install Node 20 (for mcpb)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install @anthropic-ai/mcpb
+        run: npm install -g @anthropic-ai/mcpb@latest
+
+      - name: Build .mcpb bundle
+        run: |
+          if [ ! -f manifest.json ]; then
+            echo "::warning::no manifest.json — skipping .mcpb build"
+            exit 0
+          fi
+          mcpb validate manifest.json
+          mcpb pack . "${{ github.event.repository.name }}.mcpb"
+          ls -lh "${{ github.event.repository.name }}.mcpb"
+
+      - name: Create / update GitHub Release with .mcpb attached
+        if: github.event_name == 'push' && env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BUNDLE="${{ github.event.repository.name }}.mcpb"
+          if [ -f "$BUNDLE" ]; then
+            gh release create "v$VERSION" \
+              --title "${{ github.event.repository.name }} v$VERSION" \
+              --generate-notes \
+              "$BUNDLE" || \
+            gh release upload "v$VERSION" "$BUNDLE" --clobber
+          else
+            gh release create "v$VERSION" \
+              --title "${{ github.event.repository.name }} v$VERSION" \
+              --generate-notes
+          fi

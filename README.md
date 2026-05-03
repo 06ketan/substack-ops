@@ -3,11 +3,14 @@
 <!-- mcp-name: io.github.06ketan/substack-ops -->
 
 [![PyPI version](https://img.shields.io/pypi/v/substack-ops?color=ff6719&label=pypi)](https://pypi.org/project/substack-ops/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/substack-ops?color=ff6719&label=downloads)](https://pypi.org/project/substack-ops/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![MCP compatible](https://img.shields.io/badge/MCP-compatible-8A2BE2)](https://modelcontextprotocol.io)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-verified-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.06ketan/substack-ops)
+[![Anthropic DXT](https://img.shields.io/badge/Anthropic_DXT-.mcpb-D97706)](https://github.com/06ketan/substack-ops/releases/latest)
 [![Glama MCP server](https://glama.ai/mcp/servers/06ketan/substack-ops/badges/score.svg)](https://glama.ai/mcp/servers/06ketan/substack-ops)
+[![MCP Badge](https://lobehub.com/badge/mcp/06ketan-substack-ops)](https://lobehub.com/mcp/06ketan-substack-ops)
 [![CI](https://github.com/06ketan/substack-ops/actions/workflows/test.yml/badge.svg)](https://github.com/06ketan/substack-ops/actions/workflows/test.yml)
 
 > **Standalone Substack CLI + 26-tool MCP server. Your IDE drafts the replies. Zero AI API keys.**

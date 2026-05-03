@@ -17,6 +17,7 @@ Tools:
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import time
@@ -49,17 +50,23 @@ TOOLS: dict[str, dict[str, Any]] = {
     },
     "get_own_profile": {
         "description": (
-            "Read-only. Return the authenticated user's full profile (handle, name, "
-            "bio, photo, subscriber count). Use for self-info; for other users call "
-            "get_profile. No args."
+            "Read-only. Return the authenticated user's full profile as a dict with "
+            "keys: id, handle, name, bio, photo_url, subscriber_count, "
+            "primary_publication. Use this for 'who am I'-style calls and for "
+            "preflight checks before WRITE tools (the auth handle is needed to "
+            "build the publish URL). For another user's profile by handle, call "
+            "get_profile instead. No args."
         ),
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     "get_profile": {
         "description": (
-            "Read-only. Return any user's public profile by handle (the @-name from "
-            "their Substack URL, e.g. 'paulgraham'). For your own profile use "
-            "get_own_profile (faster, no handle needed)."
+            "Read-only. Return any Substack user's public profile by their handle "
+            "(the @-name from their URL, e.g. 'paulgraham' for paulgraham.substack."
+            "com). Returns id, handle, name, bio, photo_url, subscriber_count, and "
+            "primary_publication. For YOUR own profile, prefer get_own_profile "
+            "(faster, no handle needed, includes private fields). To list a user's "
+            "posts after this, use list_posts with their pub url."
         ),
         "input_schema": {
             "type": "object",
@@ -104,9 +111,12 @@ TOOLS: dict[str, dict[str, Any]] = {
     },
     "get_post_by_id": {
         "description": (
-            "Read-only. Strict-typed variant of get_post that only accepts a numeric "
-            "id (no slug). Use when you already have an integer id and want type "
-            "safety; otherwise use get_post."
+            "Read-only. Strict-typed variant of get_post that ONLY accepts a numeric "
+            "post id (e.g. 193866852) — no slug fallback. Use this when your caller "
+            "already has an integer id (e.g. from list_posts response) and you want "
+            "type safety + fewer round-trips. Returns the same shape as get_post "
+            "(title, slug, dates, reactions, comment_count). For a slug-or-id input "
+            "use get_post; for the post body use get_post_content."
         ),
         "input_schema": {
             "type": "object",
@@ -174,9 +184,14 @@ TOOLS: dict[str, dict[str, Any]] = {
     },
     "get_feed": {
         "description": (
-            "Read-only. Pull the reader feed you'd see in the Substack app. Use "
-            "tab='for-you' for personalized, 'subscribed' for pubs you follow, or "
-            "'category-{slug}' (e.g. 'category-tech') for a topic feed."
+            "Read-only. Pull items from the reader feed you'd see in the Substack "
+            "app/home. Pass tab='for-you' (personalized recommendations, default), "
+            "'subscribed' (only publications you've subscribed to), or "
+            "'category-{slug}' for a topic feed (e.g. 'category-tech', "
+            "'category-finance', 'category-politics'). Returns a list of "
+            "{post_id, title, pub, byline, snippet, published_at}. For a single "
+            "publication's chronological list use list_posts; for keyword search "
+            "use search_posts."
         ),
         "input_schema": {
             "type": "object",
@@ -293,8 +308,13 @@ TOOLS: dict[str, dict[str, Any]] = {
     },
     "restack_note": {
         "description": (
-            "WRITE. Restack a Note. Defaults to dry_run=true. Like restack_post, "
-            "Substack does not support unrestacking. For posts use restack_post."
+            "WRITE. Restack a Note (Substack's reshare for short-form Notes), "
+            "broadcasting it to your subscribers' feeds. Example: "
+            "restack_note(note_id='123456789', dry_run=false). Defaults to "
+            "dry_run=true so the first call is a no-op preview — set dry_run=false "
+            "to actually publish. Like restack_post, Substack does not support "
+            "un-restacking via the public API (on=false is a no-op). For long-form "
+            "posts, use restack_post instead."
         ),
         "input_schema": {
             "type": "object",
@@ -738,14 +758,79 @@ def serve() -> None:
     server.run()
 
 
+_JSON_TO_PY: dict[str, Any] = {
+    "string": str,
+    "integer": int,
+    "number": float,
+    "boolean": bool,
+    "object": dict,
+}
+
+
+def _json_type_to_py(t: str | None, item_t: str | None = None) -> Any:
+    if t == "array":
+        return list[str] if item_t == "string" else list
+    return _JSON_TO_PY.get(t or "", Any)
+
+
+def _build_docstring(spec: dict[str, Any]) -> str:
+    lines = [spec["description"], ""]
+    schema = spec.get("input_schema") or {}
+    props = schema.get("properties") or {}
+    required = set(schema.get("required") or [])
+    if props:
+        lines.append("Args:")
+        for pname, pspec in props.items():
+            tag = " (required)" if pname in required else ""
+            desc = pspec.get("description", "")
+            lines.append(f"    {pname}: {desc}{tag}".rstrip())
+    return "\n".join(lines).strip()
+
+
 def _register(server: Any, name: str, spec: dict[str, Any]) -> None:
-    """Register a tool with FastMCP. We use a closure over `name`."""
+    """Build a real Python function with introspectable parameters from the
+    tool's input_schema, so FastMCP can derive a correct JSON Schema. Without
+    a real signature, FastMCP falls back to a degenerate `kwargs` schema and
+    every client-side tool call fails validation.
+    """
+    schema = spec.get("input_schema") or {"type": "object", "properties": {}}
+    props: dict[str, dict[str, Any]] = schema.get("properties") or {}
+    required: set[str] = set(schema.get("required") or [])
 
-    @server.tool(name=name, description=spec["description"])
-    def _tool(**kwargs: Any) -> Any:
-        return _dispatch(name, kwargs)
+    params: list[inspect.Parameter] = []
+    annotations: dict[str, Any] = {}
+    for pname, pspec in props.items():
+        item_t = (pspec.get("items") or {}).get("type")
+        py_type = _json_type_to_py(pspec.get("type"), item_t)
+        annotations[pname] = py_type
+        if pname in required:
+            params.append(
+                inspect.Parameter(
+                    pname,
+                    inspect.Parameter.KEYWORD_ONLY,
+                    annotation=py_type,
+                )
+            )
+        else:
+            params.append(
+                inspect.Parameter(
+                    pname,
+                    inspect.Parameter.KEYWORD_ONLY,
+                    annotation=py_type,
+                    default=pspec.get("default", None),
+                )
+            )
+    annotations["return"] = Any
 
-    return _tool  # type: ignore[no-any-return]
+    def _impl(**kwargs: Any) -> Any:
+        return _dispatch(name, {k: v for k, v in kwargs.items() if v is not None})
+
+    _impl.__signature__ = inspect.Signature(params, return_annotation=Any)  # type: ignore[attr-defined]
+    _impl.__annotations__ = annotations
+    _impl.__name__ = name
+    _impl.__doc__ = _build_docstring(spec)
+
+    server.tool(name=name, description=spec["description"])(_impl)
 
 
 def _fallback_dispatcher() -> None:

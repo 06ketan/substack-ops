@@ -121,3 +121,27 @@ def test_claude_code_runs_subprocess(monkeypatch):
     assert out["returncode"] == 0
     assert "claude" in captured["cmd"][0]
     assert captured["cmd"][1:5] == ["mcp", "add", "--transport", "stdio"]
+
+
+def test_opencode_creates_new_config(tmp_path: Path, monkeypatch):
+    cfg = tmp_path / ".config" / "opencode" / "opencode.json"
+    monkeypatch.setattr(inst, "_opencode_config_path", lambda: cfg)
+    out = inst.install_to_host(host="opencode")
+    assert cfg.exists()
+    data = json.loads(cfg.read_text())
+    assert "substack-ops" in data["mcp"]
+    block = data["mcp"]["substack-ops"]
+    assert block["type"] == "local"
+    assert block["command"] == ["uvx", "substack-ops", "mcp", "serve"]
+    assert block["enabled"] is True
+    assert out["already_present"] is False
+
+
+def test_opencode_dry_run(tmp_path: Path, monkeypatch):
+    cfg = tmp_path / ".config" / "opencode" / "opencode.json"
+    monkeypatch.setattr(inst, "_opencode_config_path", lambda: cfg)
+    out = inst.install_to_host(host="opencode", dry_run=True)
+    assert not cfg.exists()
+    assert out["would_write"] is True
+    snippet = json.loads(out["snippet"])
+    assert "mcp" in snippet

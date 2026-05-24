@@ -5,6 +5,7 @@ Hosts:
   claude-desktop  ~/Library/Application Support/Claude/...        (JSON merge,
                   %APPDATA%\\Claude\\..., ~/.config/Claude/...)
   claude-code     shells out to `claude mcp add --transport stdio ...`
+  opencode        ~/.config/opencode/opencode.json                 (JSON merge under `mcp`)
   print           prints the JSON snippet only (manual install)
 
 Always idempotent. Existing config is backed up to <file>.bak before write.
@@ -50,6 +51,58 @@ def _server_block(name: str = "substack-ops") -> dict[str, Any]:
 
 def _cursor_config_path() -> Path:
     return Path.home() / ".cursor" / "mcp.json"
+
+
+def _opencode_config_path() -> Path:
+    return Path.home() / ".config" / "opencode" / "opencode.json"
+
+
+def _opencode_server_block() -> dict[str, Any]:
+    """OpenCode expects `mcp.<name>` with type + argv (see open-code.ai MCP docs)."""
+    pkg = SERVER_BIN
+    return {
+        "type": "local",
+        "command": ["uvx", pkg, "mcp", "serve"],
+        "enabled": True,
+        "env": {},
+    }
+
+
+def _merge_opencode_config(path: Path, name: str, dry_run: bool) -> dict[str, Any]:
+    block = _opencode_server_block()
+    snippet = {"mcp": {name: block}}
+
+    if path.exists():
+        try:
+            data = _loads_jsonc(path.read_text())
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"refusing to overwrite invalid JSON at {path}: {exc}") from exc
+    else:
+        data = {}
+
+    servers = data.setdefault("mcp", {})
+    already = servers.get(name) == block
+    servers[name] = block
+
+    if dry_run:
+        return {
+            "host_config": str(path),
+            "would_write": True,
+            "already_present": already,
+            "snippet": json.dumps(snippet, indent=2),
+        }
+
+    bak = _backup(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n")
+    return {
+        "host_config": str(path),
+        "wrote": True,
+        "backup": str(bak) if bak else None,
+        "already_present": already,
+        "server_name": name,
+        "command": " ".join(block["command"]),
+    }
 
 
 def _claude_desktop_config_path() -> Path:
@@ -153,8 +206,10 @@ def install_to_host(*, host: str, name: str = "substack-ops", dry_run: bool = Fa
         return _merge_json_config(_claude_desktop_config_path(), name, dry_run)
     if host_norm in ("claude-code", "claude_code", "claudecode"):
         return _claude_code_install(name, dry_run)
+    if host_norm in ("opencode", "open-code", "open_code"):
+        return _merge_opencode_config(_opencode_config_path(), name, dry_run)
     if host_norm in ("print", "snippet"):
         return _print_snippet(name)
     raise ValueError(
-        f"unknown host: {host}. choose: cursor | claude-desktop | claude-code | print"
+        f"unknown host: {host}. choose: cursor | claude-desktop | claude-code | opencode | print"
     )

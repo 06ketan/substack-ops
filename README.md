@@ -13,7 +13,7 @@
 [![MCP Badge](https://lobehub.com/badge/mcp/06ketan-substack-ops)](https://lobehub.com/mcp/06ketan-substack-ops)
 [![CI](https://github.com/06ketan/substack-ops/actions/workflows/test.yml/badge.svg)](https://github.com/06ketan/substack-ops/actions/workflows/test.yml)
 
-> **Standalone Substack CLI + 26-tool MCP server. Your IDE drafts the replies. Zero AI API keys.**
+> **Standalone Substack CLI + 26-tool MCP server for Cursor MCP, Claude MCP, OpenCode MCP, and any stdio MCP host. Your IDE drafts the replies. Zero AI API keys.**
 
 Site → **[substack-ops.chavan.in](https://substack-ops.chavan.in)** · Source → **[06ketan/substack-ops](https://github.com/06ketan/substack-ops)** · Glama → **[mcp/servers/06ketan/substack-ops](https://glama.ai/mcp/servers/06ketan/substack-ops)**
 
@@ -28,7 +28,7 @@ binary, MIT licensed.
 ## TL;DR — MCP-native (no API key, one command)
 
 ```bash
-uvx substack-ops mcp install cursor          # or claude-desktop, claude-code, print
+uvx substack-ops mcp install cursor          # or claude-desktop, claude-code, opencode, print
 # Restart your host. Then in chat:
 #   "list unanswered comments on post 193866852"
 #   "draft a warm reply to comment 12345"
@@ -38,6 +38,58 @@ uvx substack-ops mcp install cursor          # or claude-desktop, claude-code, p
 Your **host's** LLM (Cursor's, Claude's) does the drafting via the
 `propose_reply` / `confirm_reply` tools. No `ANTHROPIC_API_KEY` /
 `OPENAI_API_KEY` needed.
+
+### Wrong install?
+
+This project is **`substack-ops` on [PyPI](https://pypi.org/project/substack-ops/)** — install with **`uv` / `uvx`**, not unrelated **`npx`** packages that appear when searching “Substack MCP”. Canonical listing: **[Glama — 06ketan/substack-ops](https://glama.ai/mcp/servers/06ketan/substack-ops)**.
+
+## Works with (MCP)
+
+These rows help discovery (search keywords); **confirm each host’s current MCP docs** before upgrading.
+
+### Open source–oriented hosts
+
+| Host | Documentation | Typical wire-up |
+|------|---------------|-----------------|
+| **OpenCode** | [OpenCode MCP servers](https://open-code.ai/en/docs/mcp-servers) | `uvx substack-ops mcp install opencode` |
+| **Continue** | [Continue](https://docs.continue.dev) | `uvx substack-ops mcp install print` — paste the snippet into Continue’s MCP settings |
+| **Zed** | [Zed](https://zed.dev/docs) | Configure stdio MCP per Zed’s docs |
+| **Cline** | [Cline](https://github.com/cline/cline) | MCP setup per extension / marketplace docs |
+| **Goose** | [Goose](https://block.github.io/goose/) | MCP extensions per Goose docs |
+
+### Large commercial stacks
+
+| Host | Documentation | Typical wire-up |
+|------|---------------|-----------------|
+| **Cursor** | [Cursor MCP](https://docs.cursor.com/context/model-context-protocol) | `uvx substack-ops mcp install cursor` |
+| **Claude** (Desktop / Code) | [Claude Desktop](https://support.anthropic.com/en/articles/10065433-installing-claude-for-desktop), [Claude Code](https://docs.claude.com/en/docs/claude-code) | `mcp install claude-desktop` / `claude-code` |
+| **GitHub Copilot** | [Copilot](https://docs.github.com/en/copilot) | MCP in VS Code / Copilot where supported — use `print` + host docs |
+| **ChatGPT** | [OpenAI](https://platform.openai.com/docs) | Developer / connector flows — often REST ([Slideshot API](https://slideshot.vercel.app)) for tools without MCP |
+| **Google Gemini** | [Gemini](https://ai.google.dev/docs) | Gemini CLI / IDE features per Google docs — stdio where supported |
+
+### OpenCode (copy-paste)
+
+Auto-install:
+
+```bash
+uvx substack-ops mcp install opencode
+```
+
+Manual (`~/.config/opencode/opencode.json`):
+
+```json
+{
+  "mcp": {
+    "substack-ops": {
+      "type": "local",
+      "command": ["uvx", "substack-ops", "mcp", "serve"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Optional version pin: use `["uvx", "substack-ops==0.3.5", "mcp", "serve"]` (replace with current PyPI release).
 
 ## Setup (dev / from source)
 
@@ -150,7 +202,7 @@ land in `.cache/audit.jsonl` and are dedup-checked against `.cache/actions.db`.
 
 | Command | What it does |
 |---|---|
-| `mcp install <cursor\|claude-desktop\|claude-code\|print> [--dry-run]` | Auto-merge config into your host. |
+| `mcp install <cursor\|claude-desktop\|claude-code\|opencode\|print> [--dry-run]` | Auto-merge config into your host. |
 | `mcp serve` | stdio MCP server (26 tools). |
 | `mcp list-tools` | Print the tool registry. |
 
@@ -201,6 +253,7 @@ Custom YAML rules under `~/.config/substack-ops/auto/*.yaml`. Loop with
 ## MCP server
 
 ```bash
+substack-ops mcp install opencode          # auto-add to ~/.config/opencode/opencode.json
 substack-ops mcp install cursor              # auto-add to ~/.cursor/mcp.json
 substack-ops mcp install claude-desktop      # auto-add to claude_desktop_config.json
 substack-ops mcp install claude-code         # uses `claude mcp add` under the hood
@@ -335,6 +388,11 @@ mcp.json | env | Chrome | OTP  →  auth.py / auth_chrome.py / auth_otp.py
 | Categories | `GET https://substack.com/api/v1/categories` |
 | User profile | `GET https://substack.com/api/v1/user/{handle}/public_profile` (auto-redirects on 404) |
 | Reader feed | `GET https://substack.com/api/v1/reader/feed/{recommended\|subscribed\|category/{slug}}` |
+
+## Related MCPs
+
+- **[slideshot](https://github.com/06ketan/slideshot)** — HTML → slides (PNG / PDF / PPTX); npm [`slideshot-mcp`](https://www.npmjs.com/package/slideshot-mcp).
+- **[medium-ops](https://github.com/06ketan/medium-ops)** — Medium stories + responses + MCP (PyPI `medium-ops`).
 
 ## Tests
 

@@ -1149,7 +1149,7 @@ def mcp_list_tools_cmd() -> None:
 def mcp_install_cmd(
     host: str = typer.Argument(
         ...,
-        help="cursor | claude-desktop | claude-code | codex | print",
+        help="cursor | claude-desktop | claude-code | opencode | codex | print",
     ),
     name: str = typer.Option("substack-ops", "--name", help="Server name in host config"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print config, don't write"),

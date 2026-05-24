@@ -26,6 +26,7 @@ htmlcov/
 .env.local
 audit.jsonl
 dedup.db
+.cache/
 *.cookie
 
 # Build artifacts

@@ -163,7 +163,7 @@ def verify(
     }
     with httpx.Client(timeout=20, follow_redirects=True) as client:
         r = client.get(
-            "https://substack.com/api/v1/subscriptions",
+            "https://substack.com/api/v1/subscriptions?tvOnly=false",
             cookies=cookies,
             headers=headers,
         )
@@ -171,39 +171,19 @@ def verify(
         data = r.json() if r.status_code == 200 else {}
         sub_count = len(data.get("subscriptions", [])) if data else None
 
-        pub_users = data.get("publicationUsers") or []
-        publications = data.get("publications") or []
-        me = pub_users[0] if pub_users else {}
-
         # name resolution chain:
-        # 1. publicationUsers[0].name
-        # 2. matching publications[].name (publication title)
-        # 3. publication subdomain
-        # 4. handle parsed from publication_url
-        name = me.get("name") or me.get("twitter_screen_name")
-        my_pub_id = me.get("publication_id")
-        publication_name = None
-        if my_pub_id:
-            for p in publications:
-                if p.get("id") == my_pub_id:
-                    publication_name = p.get("name")
-                    break
-        if not name:
-            name = publication_name
-        if not name:
-            # parse subdomain from cfg.publication_url, e.g. ketanchavan.substack.com
-            from urllib.parse import urlparse
-            host = urlparse(cfg.publication_url).netloc
-            name = host.split(".")[0] if host else None
+        # parse subdomain from cfg.publication_url, e.g. ketanchavan.substack.com
+        from urllib.parse import urlparse
+        host = urlparse(cfg.publication_url).netloc
+        name = host.split(".")[0] if host else "Unknown"
 
-    # auth is OK if subscriptions endpoint returned 200 AND we found our own
-    # publicationUsers row (proves cookie maps to a real account).
-    ok = sub_status == 200 and bool(pub_users)
+    # auth is OK if subscriptions endpoint returned 200.
+    ok = sub_status == 200
     return {
         "ok": ok,
         "name": name,
-        "publication_name": publication_name,
-        "publication_id": my_pub_id,
+        "publication_name": name,
+        "publication_id": None,
         "user_id": cfg.user_id,
         "publication_url": cfg.publication_url,
         "subscriptions_count": sub_count,

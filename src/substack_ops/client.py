@@ -510,18 +510,19 @@ class SubstackClient:
     # ------------------------------------------------------------------
 
     def get_my_profile(self) -> dict[str, Any]:
-        """`/api/v1/subscriptions` is the closest thing to "me"."""
-        r = self.http.get(f"{SUBSTACK}/api/v1/subscriptions")
+        """`/api/v1/subscriptions?tvOnly=false` is the closest thing to "me"."""
+        r = self.http.get(f"{SUBSTACK}/api/v1/subscriptions?tvOnly=false")
         r.raise_for_status()
         data = r.json()
-        pub_users = data.get("publicationUsers") or []
         publications = data.get("publications") or []
-        me = pub_users[0] if pub_users else {}
+        from urllib.parse import urlparse
+        host = urlparse(self.cfg.publication_url).netloc
+        name = host.split(".")[0] if host else "Unknown"
         return {
             "user_id": self.cfg.user_id,
-            "name": me.get("name"),
-            "handle": me.get("twitter_screen_name") or me.get("name"),
-            "publication_id": me.get("publication_id"),
+            "name": name,
+            "handle": name,
+            "publication_id": None,
             "publications": [
                 {"id": p.get("id"), "name": p.get("name"), "subdomain": p.get("subdomain")}
                 for p in publications

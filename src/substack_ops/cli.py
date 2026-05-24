@@ -72,6 +72,15 @@ def _root(
         raise typer.Exit()
 
 
+def _client() -> SubstackClient:
+    try:
+        return SubstackClient.create()
+    except AuthError as exc:
+        err_console.print(f"Authentication Error: {exc}")
+        console.print("\n[yellow]💡 Fix: Run `uv run substack-ops auth setup` to configure your Substack credentials.[/yellow]")
+        raise typer.Exit(code=2) from exc
+
+
 @auth_app.command("verify")
 def auth_verify(
     json_out: bool = typer.Option(False, "--json", help="Print raw JSON instead of table"),
@@ -153,23 +162,152 @@ def auth_login(
 
 @auth_app.command("setup")
 def auth_setup(
-    out: Path = typer.Option(Path(".cache/cookies.json"), "--out"),
+    curl: str = typer.Option(None, "--curl", help="Paste a cURL command string (e.g. from copy as cURL) to extract cookies."),
 ) -> None:
     """Interactive paste-cookies flow for users without Chrome auto-grab."""
-    sid = typer.prompt("Paste your substack.sid cookie value", hide_input=True)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    payload = [
-        {"name": "substack.sid", "value": sid, "domain": ".substack.com", "path": "/", "secure": True},
-        {"name": "substack.lli", "value": "1", "domain": ".substack.com", "path": "/", "secure": True},
-    ]
-    out.write_text(json.dumps(payload, indent=2))
-    try:
-        import os as _os
+    import re
+    import sys
+    import httpx
 
-        _os.chmod(out, 0o600)
-    except OSError:
-        pass
-    console.print(f"[green]wrote cookies to[/] {out}. Now run [cyan]substack-ops auth verify[/].")
+    console.print("[bold]Substack auth setup[/bold]")
+    console.print("You only need a substack.sid cookie. We will auto-extract your user ID and publication URL.\n")
+
+    sid = ""
+    extracted_user_id = None
+
+    if not curl:
+        choice = typer.prompt(
+            "How would you like to provide your credentials?\n"
+            "  [1] Auto-extract from a cURL request (recommended)\n"
+            "  [2] Manual entry (Application -> Cookies)\n"
+            "Choice",
+            default="1",
+        )
+        if choice == "1":
+            console.print("\n[bold cyan]How to find these?[/bold cyan]")
+            console.print("1. Go to [blue]substack.com[/blue] and make sure you are logged in.")
+            console.print("2. Open your browser's Developer Tools (F12 or right-click -> Inspect).")
+            console.print("3. Go to the [bold]Network[/bold] tab and refresh the page.")
+            console.print("4. Find any request to `substack.com`.")
+            console.print("5. Right-click the request -> Copy -> [bold]Copy as cURL[/bold].")
+            console.print("\n[yellow]Paste your cURL command below, then press Enter twice to submit:[/yellow]")
+            lines = []
+            try:
+                while True:
+                    line = input()
+                    if not line.strip() and lines:
+                        break
+                    if line.strip():
+                        lines.append(line)
+            except EOFError:
+                pass
+            curl = " ".join(lines)
+        else:
+            console.print("\n[bold cyan]How to find these?[/bold cyan]")
+            console.print("1. Go to [blue]substack.com[/blue] and make sure you are logged in.")
+            console.print("2. Open your browser's Developer Tools (F12 or right-click -> Inspect).")
+            console.print("3. Find [dim]`substack.sid`[/dim] in the Application -> Cookies tab for `.substack.com`.\n")
+
+    if curl:
+        # Substack's sid is usually encoded like `s%3A...` or `s:...`
+        sid_match = re.search(r'\bsubstack\.sid=([^;\'"\s]+)', curl)
+        if sid_match:
+            sid = sid_match.group(1)
+            # if it's url encoded, unquote it
+            from urllib.parse import unquote
+            sid = unquote(sid)
+            console.print(f"[green]Extracted substack.sid[/green]: ...{sid[-6:]}")
+        
+        if not sid:
+            console.print("[red]Could not find `substack.sid` in the provided cURL command.[/red]")
+            console.print("[yellow]Make sure you copied a request from the `.substack.com` domain that includes cookies.[/yellow]")
+            raise typer.Exit(1)
+            
+        lli_match = re.search(r'\bsubstack\.lli=([^;\'"\s]+)', curl)
+        if lli_match:
+            try:
+                import base64
+                import json
+                parts = lli_match.group(1).split('.')
+                if len(parts) >= 2:
+                    payload = parts[1]
+                    padded = payload + '=' * (-len(payload) % 4)
+                    lli_data = json.loads(base64.urlsafe_b64decode(padded))
+                    if lli_data.get("userId"):
+                        extracted_user_id = lli_data["userId"]
+            except Exception:
+                pass
+    else:
+        sid = typer.prompt("substack.sid (required)")
+        from urllib.parse import unquote
+        sid = unquote(sid)
+
+    # Now let's hit /api/v1/subscriptions to auto-extract pub_url
+    console.print("\n[dim]Fetching your Substack profile to auto-configure...[/dim]")
+    cookies = {"substack.sid": sid, "substack.lli": "1"}
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
+        ),
+        "Accept": "application/json",
+    }
+    with httpx.Client(timeout=20, follow_redirects=True) as client:
+        r = client.get("https://substack.com/api/v1/subscriptions?tvOnly=false", cookies=cookies, headers=headers)
+        if r.status_code != 200:
+            console.print(f"[red]Failed to authenticate with Substack (HTTP {r.status_code}).[/red]")
+            console.print("Your substack.sid might be expired or invalid.")
+            raise typer.Exit(1)
+        
+        data = r.json()
+        
+        user_id = extracted_user_id
+        if not user_id:
+            user_id = typer.prompt("Your Substack User ID (numeric, found in feed urls or lli cookie)")
+            
+        pub_url = ""
+        publications = data.get("publications") or []
+        for p in publications:
+            if p.get("id") != 1:  # Skip 'On Substack' default pub
+                subdomain = p.get("subdomain")
+                if subdomain:
+                    pub_url = f"https://{subdomain}.substack.com"
+                else:
+                    custom = p.get("custom_domain")
+                    if custom:
+                        pub_url = f"https://{custom}"
+                break
+        
+        if not pub_url:
+            console.print("[yellow]Could not automatically determine your publication URL.[/yellow]")
+            pub_url = typer.prompt("Your publication URL (e.g. https://myname.substack.com)")
+
+        console.print(f"[green]Found User ID:[/green] {user_id}")
+        console.print(f"[green]Found Publication URL:[/green] {pub_url}")
+
+    env_path = Path(".env")
+    lines: list[str] = []
+    if env_path.exists():
+        lines = env_path.read_text().splitlines()
+
+    def _set(key: str, val: str) -> None:
+        if not val:
+            return
+        line = f"{key}={val}"
+        for i, ex in enumerate(lines):
+            if ex.startswith(f"{key}="):
+                lines[i] = line
+                return
+        lines.append(line)
+
+    _set("SUBSTACK_SESSION_TOKEN", sid)
+    _set("SUBSTACK_USER_ID", str(user_id))
+    _set("SUBSTACK_PUBLICATION_URL", pub_url)
+
+    env_path.write_text("\n".join(lines) + "\n")
+    console.print(f"[green]wrote[/green] {env_path}")
+    console.print("\n[bold cyan]Next Steps:[/bold cyan]")
+    console.print("Run [yellow]uv run substack-ops auth test[/yellow] to verify your connection.")
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +322,7 @@ def posts_list(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """List posts (yours by default; pass --pub to read another publication)."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         posts = c.list_posts(limit=limit, sorting=sort, pub=pub)
 
     if json_out:
@@ -217,7 +355,7 @@ def posts_show(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Show a single post's metadata."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         meta = c.get_post(post_id, pub=pub)
     if json_out:
         console.print_json(data=meta)
@@ -242,7 +380,7 @@ def posts_stats(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Publisher stats for a post (opens, clicks, views, subs)."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         stats = c.get_post_stats(post_id)
     if json_out:
         console.print_json(data=stats)
@@ -267,7 +405,7 @@ def posts_content(
     out: Path | None = typer.Option(None, "--out", help="Write to file instead of stdout"),
 ) -> None:
     """Fetch the body HTML for a post (markdownify with --md)."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         html = c.get_post_content(post_id, pub=pub)
     if html is None:
         err_console.print("no body content (paywalled and unauthed?)")
@@ -291,7 +429,7 @@ def posts_search(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Search posts in a publication (yours unless --pub)."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         posts = c.search_posts(query=query, limit=limit, pub=pub)
     if json_out:
         console.print_json(data=posts)
@@ -315,7 +453,7 @@ def posts_paywalled(
     pub: str | None = typer.Option(None, "--pub"),
 ) -> None:
     """Print true/false: is this post paywalled?"""
-    with SubstackClient.create() as c:
+    with _client() as c:
         console.print(str(c.is_post_paywalled(post_id, pub=pub)).lower())
 
 
@@ -326,7 +464,7 @@ def posts_get(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Fetch a post by slug (alias for `posts show` when you only have a slug)."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         meta = c.get_post(slug, pub=pub)
     if json_out:
         console.print_json(data=meta)
@@ -346,7 +484,7 @@ def posts_react(
     """React (or --off to unreact) to a post."""
     from substack_ops.dedup import DedupDB, DuplicateActionError
 
-    with SubstackClient.create() as c:
+    with _client() as c:
         action = "unreact_post" if off else "react_post"
         if not dry_run:
             try:
@@ -374,7 +512,7 @@ def posts_restack(
     """Restack (share) a post."""
     from substack_ops.dedup import DedupDB, DuplicateActionError
 
-    with SubstackClient.create() as c:
+    with _client() as c:
         action = "unrestack_post" if off else "restack_post"
         if not dry_run:
             try:
@@ -400,7 +538,7 @@ def podcasts_list(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """List podcast posts."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         items = c.list_podcasts(limit=limit, pub=pub)
     if json_out:
         console.print_json(data=items)
@@ -424,7 +562,7 @@ def recs_list(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Show recommended publications."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         items = c.get_recommendations(pub=pub)
     if json_out:
         console.print_json(data=items)
@@ -439,7 +577,7 @@ def authors_list(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """List authors of a publication."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         items = c.get_authors(pub=pub)
     if json_out:
         console.print_json(data=items)
@@ -460,7 +598,7 @@ def authors_list(
 @categories_app.command("list")
 def categories_list(json_out: bool = typer.Option(False, "--json")) -> None:
     """List all top-level Substack categories."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         items = c.list_categories()
     if json_out:
         console.print_json(data=items)
@@ -484,7 +622,7 @@ def categories_get(
     if not name and not id:
         err_console.print("Provide --name or --id")
         raise typer.Exit(code=2)
-    with SubstackClient.create() as c:
+    with _client() as c:
         data = c.get_category(name=name, id=id)
     pubs = data["publications"][:limit]
     if json_out:
@@ -505,7 +643,7 @@ def users_get(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Public profile by handle (auto-follows renamed handles)."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         data = c.get_profile(handle)
     if json_out:
         console.print_json(data=data)
@@ -519,7 +657,7 @@ def users_subscriptions(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Subscriptions for a public profile."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         subs = c.get_subscriptions(handle)
     if json_out:
         console.print_json(data=subs)
@@ -540,7 +678,7 @@ def users_subscriptions(
 @profile_app.command("me")
 def profile_me(json_out: bool = typer.Option(False, "--json")) -> None:
     """Your own profile."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         data = c.get_my_profile()
     if json_out:
         console.print_json(data=data)
@@ -574,7 +712,7 @@ def feed_list(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Reader feed."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         items = c.get_feed(tab=tab, limit=limit)
     if json_out:
         console.print_json(data=items)
@@ -630,7 +768,7 @@ def comments_tree(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Pretty-print the comment tree for a post."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         data = c.get_comments(post_id)
 
     if json_out:
@@ -655,7 +793,7 @@ def comments_export(
     pub: str | None = typer.Option(None, "--pub"),
 ) -> None:
     """Export raw comments tree to JSON."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         data = c.get_comments(post_id, pub=pub)
     out.write_text(json.dumps(data, indent=2))
     console.print(f"[green]wrote[/] {out} ({out.stat().st_size} bytes)")
@@ -673,7 +811,7 @@ def comments_add(
     from substack_ops.dedup import DedupDB, DuplicateActionError
 
     target = f"post:{post_id}:top"
-    with SubstackClient.create() as c:
+    with _client() as c:
         if not dry_run:
             try:
                 DedupDB().check(target_id=target, action="add_comment", force=force)
@@ -702,7 +840,7 @@ def comments_react(
 
     action = "unreact_comment" if off else "react_comment"
     target = f"{kind}:{comment_id}"
-    with SubstackClient.create() as c:
+    with _client() as c:
         if not dry_run:
             try:
                 DedupDB().check(target_id=target, action=action, force=force)
@@ -731,7 +869,7 @@ def comments_delete(
     from substack_ops.dedup import DedupDB, DuplicateActionError
 
     target = f"{kind}:{comment_id}"
-    with SubstackClient.create() as c:
+    with _client() as c:
         if not dry_run:
             try:
                 DedupDB().check(target_id=target, action="delete_comment", force=force)
@@ -755,7 +893,7 @@ def notes_list(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """List your notes."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         notes = c.list_notes(limit=limit)
     if json_out:
         console.print_json(data=notes)
@@ -788,7 +926,7 @@ def notes_publish(
     dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run"),
 ) -> None:
     """Publish a top-level note."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         r = c.publish_note(body=body, dry_run=dry_run)
         _audit_write("publish_note", target_id="(self)", payload=r, dry_run=dry_run)
     console.print_json(data=r)
@@ -806,7 +944,7 @@ def notes_react(
     from substack_ops.dedup import DedupDB, DuplicateActionError
 
     action = "unreact_note" if off else "react_note"
-    with SubstackClient.create() as c:
+    with _client() as c:
         if not dry_run:
             try:
                 DedupDB().check(target_id=str(note_id), action=action, force=force)
@@ -831,7 +969,7 @@ def notes_restack(
     from substack_ops.dedup import DedupDB, DuplicateActionError
 
     action = "unrestack_note" if off else "restack_note"
-    with SubstackClient.create() as c:
+    with _client() as c:
         if not dry_run:
             try:
                 DedupDB().check(target_id=str(note_id), action=action, force=force)
@@ -851,7 +989,7 @@ def notes_show(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Show a single note + its thread."""
-    with SubstackClient.create() as c:
+    with _client() as c:
         thread = c.get_note_thread(note_id)
     if json_out:
         console.print_json(data=thread)

@@ -1,7 +1,7 @@
 [project]
 name = "substack-ops"
 version = "0.3.5"
-description = "Standalone Substack CLI + 26-tool MCP server. Your IDE drafts the replies. Zero AI API keys."
+description = "Standalone Substack CLI + 27-tool MCP server. Your IDE drafts the replies. Zero AI API keys."
 readme = "README.md"
 authors = [
     { name = "Ketan Chavan", email = "ketan.chavan.test@gmail.com" }

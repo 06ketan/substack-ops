@@ -11,7 +11,6 @@ Confirms:
 from __future__ import annotations
 
 import json
-from typing import Any
 
 import httpx
 
@@ -111,6 +110,78 @@ def test_publish_note_no_parent_id(tmp_path):
     assert seen["url"] == "https://substack.com/api/v1/comment/feed"
     assert "parent_id" not in seen["body"]
     assert seen["body"]["bodyJson"]["content"][0]["content"][0]["text"] == "hello world"
+
+
+def test_create_note_comment_attachment_dry_run_no_network(tmp_path):
+    def handler(req):  # pragma: no cover
+        raise AssertionError(f"dry_run should not fire, got {req.url}")
+
+    with _build_client(tmp_path, handler) as c:
+        out = c.create_note_comment_attachment(note_id=7777, dry_run=True)
+    assert out["_dry_run"] is True
+    assert out["url"] == "https://substack.com/api/v1/comment/attachment"
+    assert out["payload"] == {
+        "url": "https://substack.com/@<handle>/note/c-7777",
+        "type": "link",
+    }
+
+
+def test_quote_restack_note_dry_run_returns_two_step_preview(tmp_path):
+    def handler(req):  # pragma: no cover
+        raise AssertionError(f"dry_run should not fire, got {req.url}")
+
+    with _build_client(tmp_path, handler) as c:
+        out = c.quote_restack_note(note_id=7777, body="my commentary", dry_run=True)
+    assert out["_dry_run"] is True
+    assert [step["name"] for step in out["steps"]] == [
+        "create_note_comment_attachment",
+        "publish_note_with_attachment",
+    ]
+    assert out["steps"][0]["payload"] == {
+        "url": "https://substack.com/@<handle>/note/c-7777",
+        "type": "link",
+    }
+    assert out["steps"][1]["payload"]["attachmentIds"] == [
+        "<attachment id from create_note_comment_attachment>"
+    ]
+    note_text = out["steps"][1]["payload"]["bodyJson"]["content"][0]["content"][0]["text"]
+    assert note_text == "my commentary"
+
+
+def test_quote_restack_note_live_creates_attachment_then_publishes_note(tmp_path):
+    seen = []
+
+    def handler(req):
+        if str(req.url) == "https://substack.com/api/v1/reader/comment/7777":
+            return httpx.Response(
+                200,
+                json={
+                    "item": {
+                        "comment": {
+                            "id": 7777,
+                            "handle": "quotedauthor",
+                        }
+                    }
+                },
+            )
+        body = json.loads(req.content)
+        seen.append((str(req.url), body))
+        if str(req.url) == "https://substack.com/api/v1/comment/attachment":
+            return httpx.Response(200, json={"id": "att-123"})
+        if str(req.url) == "https://substack.com/api/v1/comment/feed":
+            return httpx.Response(200, json={"id": 999})
+        raise AssertionError(f"unexpected request {req.url}")
+
+    with _build_client(tmp_path, handler) as c:
+        out = c.quote_restack_note(note_id=7777, body="my commentary", dry_run=False)
+    assert out == {"id": 999}
+    assert seen[0] == (
+        "https://substack.com/api/v1/comment/attachment",
+        {"url": "https://substack.com/@quotedauthor/note/c-7777", "type": "link"},
+    )
+    assert seen[1][0] == "https://substack.com/api/v1/comment/feed"
+    assert seen[1][1]["attachmentIds"] == ["att-123"]
+    assert seen[1][1]["replyMinimumRole"] == "everyone"
 
 
 def test_post_note_reply_uses_parent_id_field(tmp_path):

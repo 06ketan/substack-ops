@@ -148,6 +148,7 @@ land in `.cache/audit.jsonl` and are dedup-checked against `.cache/actions.db`.
 | `notes publish <body> [--no-dry-run]` | Publish a top-level Note. |
 | `notes react <id> [--off]` | React on any Note. |
 | `notes restack <id> [--off]` | Restack a Note. |
+| `notes quote-restack <id> <body> [--no-dry-run]` | Publish a quote-style Note with another Note attached. |
 
 ### Read + Write — Comments (5)
 
@@ -373,14 +374,15 @@ mcp.json | env | Chrome | OTP  →  auth.py / auth_chrome.py / auth_otp.py
 | Reply to comment | `POST {pub}/api/v1/post/{id}/comment` body `{body, parent_id}` |
 | Add top-level comment | same with `parent_id: null` |
 | React to post | `POST {pub}/api/v1/post/{id}/reaction` body `{reaction}` |
-| Restack post | `POST https://substack.com/api/v1/restack` body `{post_id}` |
-| Restack note | `POST https://substack.com/api/v1/restack` body `{comment_id}` |
+| Restack post | `POST https://substack.com/api/v1/restack/feed` body `{postId, commentId: null, tabId, surface}` |
+| Restack note | `POST https://substack.com/api/v1/restack/feed` body `{postId: null, commentId, tabId, surface}` |
+| Quote-restack note | create comment attachment, then `POST https://substack.com/api/v1/comment/feed` body `{bodyJson, attachmentIds, tabId, surface, replyMinimumRole}` |
 | Delete post-comment | `DELETE {pub}/api/v1/comment/{id}` (PUB host) |
 | Delete note | `DELETE https://substack.com/api/v1/comment/{id}` (BARE host) |
 | My notes | `GET https://substack.com/api/v1/reader/feed/profile/{user_id}` |
 | Note thread | `GET https://substack.com/api/v1/reader/comment/{note_id}` |
 | Note replies | `GET https://substack.com/api/v1/reader/comment/{note_id}/replies` |
-| Publish note | `POST https://substack.com/api/v1/comment/feed` body `{bodyJson}` |
+| Publish note | `POST https://substack.com/api/v1/comment/feed` body `{bodyJson, tabId, surface, replyMinimumRole}` |
 | Reply to note | same with `{bodyJson, parent_id}` (NOT `parent_comment_id` — known M2 bug) |
 | React to comment | `POST {host}/api/v1/comment/{id}/reaction` (host = pub for post-comments, substack.com for notes) |
 | Recommendations | `GET {pub}/api/v1/recommendations/from/{publication_id}` |

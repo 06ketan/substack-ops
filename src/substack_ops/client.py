@@ -391,15 +391,110 @@ class SubstackClient:
         body: str,
         *,
         dry_run: bool = True,
+        attachment_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         """Publish a top-level note (no parent_id)."""
         url = f"{SUBSTACK}/api/v1/comment/feed"
-        payload: dict[str, Any] = {"bodyJson": _doc_from_text(body)}
+        payload: dict[str, Any] = {
+            "bodyJson": _doc_from_text(body),
+            "tabId": "for-you",
+            "surface": "feed",
+            "replyMinimumRole": "everyone",
+        }
+        if attachment_ids:
+            payload["attachmentIds"] = attachment_ids
         if dry_run:
             return {"_dry_run": True, "url": url, "payload": payload}
         r = self.http.post(url, json=payload)
         r.raise_for_status()
         return r.json()
+
+    def create_note_comment_attachment(
+        self,
+        note_id: int | str,
+        *,
+        dry_run: bool = True,
+        note_url: str | None = None,
+    ) -> dict[str, Any]:
+        """Create an attachment record for embedding one Note inside another.
+
+        Substack renders quote-style Notes as normal feed comments whose
+        attachments contain a first-class `{"type": "comment"}` card. The web
+        app uses `/api/v1/comment/attachment` for composer link attachments;
+        attaching a Note permalink yields the quote-card variant.
+        """
+        url = f"{SUBSTACK}/api/v1/comment/attachment"
+        resolved_url = note_url or (
+            f"https://substack.com/@<handle>/note/c-{int(note_id)}"
+            if dry_run
+            else self.note_permalink(note_id)
+        )
+        payload = {
+            "url": resolved_url,
+            "type": "link",
+        }
+        if dry_run:
+            return {"_dry_run": True, "url": url, "payload": payload}
+        r = self.http.post(url, json=payload)
+        r.raise_for_status()
+        return r.json()
+
+    def note_permalink(self, note_id: int | str) -> str:
+        """Resolve a Note/comment id to the public Substack Note permalink."""
+        item = (self.get_note_thread(note_id).get("item") or {})
+        comment = item.get("comment") or item
+        handle = comment.get("handle") or (comment.get("user") or {}).get("handle")
+        if not handle:
+            raise RuntimeError(f"Could not resolve handle for note {note_id}")
+        return f"https://substack.com/@{handle}/note/c-{int(note_id)}"
+
+    def quote_restack_note(
+        self,
+        note_id: int | str,
+        body: str,
+        *,
+        dry_run: bool = True,
+        attachment_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Publish a new Note with another Note attached, i.e. quote-restack.
+
+        This is distinct from `restack_note`, which only calls Substack's bare
+        `/api/v1/restack/feed` endpoint and cannot include commentary.
+        """
+        if dry_run:
+            attachment_preview = (
+                {"id": attachment_id, "_provided": True}
+                if attachment_id
+                else self.create_note_comment_attachment(note_id, dry_run=True)
+            )
+            publish_preview = self.publish_note(
+                body=body,
+                dry_run=True,
+                attachment_ids=[
+                    attachment_id or "<attachment id from create_note_comment_attachment>"
+                ],
+            )
+            return {
+                "_dry_run": True,
+                "steps": [
+                    {"name": "create_note_comment_attachment", **attachment_preview},
+                    {"name": "publish_note_with_attachment", **publish_preview},
+                ],
+            }
+
+        attachment = (
+            {"id": attachment_id}
+            if attachment_id
+            else self.create_note_comment_attachment(note_id, dry_run=False)
+        )
+        resolved_attachment_id = attachment.get("id") or attachment.get("attachment_id")
+        if not resolved_attachment_id:
+            raise RuntimeError(f"Attachment response did not include an id: {attachment!r}")
+        return self.publish_note(
+            body=body,
+            dry_run=False,
+            attachment_ids=[str(resolved_attachment_id)],
+        )
 
     def react_to_note(
         self,

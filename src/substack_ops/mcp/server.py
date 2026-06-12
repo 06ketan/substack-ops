@@ -1,6 +1,6 @@
 """MCP stdio server for substack-ops.
 
-26 tools wired to SubstackClient. The server uses the official `mcp` Python
+27 tools wired to SubstackClient. The server uses the official `mcp` Python
 SDK if available, otherwise falls back to a JSON-line dispatcher on stdin/stdout.
 
 Tools:
@@ -8,7 +8,8 @@ Tools:
             get_post_by_id, get_post_content, search_posts, list_notes,
             list_comments, get_feed
   writes:   publish_note, reply_to_note, comment_on_post, react_to_post,
-            react_to_comment, restack_post, restack_note, delete_comment
+            react_to_comment, restack_post, restack_note, quote_restack_note,
+            delete_comment
   unique:   bulk_draft_replies, send_approved_drafts, audit_search, dedup_status
   draft:    get_unanswered_comments, propose_reply, confirm_reply
             (host LLM drafts, no API key needed)
@@ -326,6 +327,27 @@ TOOLS: dict[str, dict[str, Any]] = {
             "required": ["note_id"],
         },
     },
+    "quote_restack_note": {
+        "description": (
+            "WRITE. Publish a new Note with another Note attached, which is the "
+            "Substack quote-restack shape for short-form Notes. Defaults to "
+            "dry_run=true and returns the two request payloads without posting. "
+            "Use restack_note for a bare restack without commentary."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "note_id": {"type": "string", "description": "Numeric id of the Note/comment being quoted."},
+                "body": {"type": "string", "description": "Commentary text for the new quote Note."},
+                "attachment_id": {
+                    "type": "string",
+                    "description": "Optional pre-created comment attachment id. Omit to create one before publishing.",
+                },
+                "dry_run": {"type": "boolean", "default": True},
+            },
+            "required": ["note_id", "body"],
+        },
+    },
     "delete_comment": {
         "description": (
             "DESTRUCTIVE WRITE. Delete one of YOUR own comments (or one on your "
@@ -640,6 +662,13 @@ def _dispatch(name: str, args: dict[str, Any]) -> Any:
             return c.restack_note(
                 note_id=args["note_id"],
                 on=args.get("on", True),
+                dry_run=args.get("dry_run", True),
+            )
+        if name == "quote_restack_note":
+            return c.quote_restack_note(
+                note_id=args["note_id"],
+                body=args["body"],
+                attachment_id=args.get("attachment_id"),
                 dry_run=args.get("dry_run", True),
             )
         if name == "delete_comment":

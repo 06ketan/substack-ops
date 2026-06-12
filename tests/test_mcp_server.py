@@ -7,13 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from substack_ops.audit import DEFAULT_AUDIT_PATH
 from substack_ops.mcp.server import TOOLS, _dispatch, list_tool_names
 
 
-def test_26_tools_registered():
+def test_27_tools_registered():
     names = list_tool_names()
-    assert len(names) == 26  # 19 parity + 4 unique + 3 MCP-native draft tools
+    assert len(names) == 27  # 20 parity + 4 unique + 3 MCP-native draft tools
     for spec in TOOLS.values():
         assert "description" in spec
         assert "input_schema" in spec
@@ -26,7 +25,7 @@ def test_required_tools_present():
         "search_posts", "list_notes", "list_comments", "get_feed",
         "publish_note", "reply_to_note", "comment_on_post",
         "react_to_post", "react_to_comment", "restack_post",
-        "restack_note", "delete_comment",
+        "restack_note", "quote_restack_note", "delete_comment",
         "bulk_draft_replies", "send_approved_drafts",
         "audit_search", "dedup_status",
         "get_unanswered_comments", "propose_reply", "confirm_reply",
@@ -36,7 +35,16 @@ def test_required_tools_present():
 
 def test_dispatch_audit_search_offline(tmp_path: Path, monkeypatch):
     audit = tmp_path / "audit.jsonl"
-    audit.write_text(json.dumps({"ts": "2026-04-21T00:00:00+00:00", "mode": "react_post", "result_status": "posted"}) + "\n")
+    audit.write_text(
+        json.dumps(
+            {
+                "ts": "2026-04-21T00:00:00+00:00",
+                "mode": "react_post",
+                "result_status": "posted",
+            }
+        )
+        + "\n"
+    )
     monkeypatch.setattr("substack_ops.audit.DEFAULT_AUDIT_PATH", audit)
 
     out = _dispatch("audit_search", {"kind": "react", "path": str(audit)})

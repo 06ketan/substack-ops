@@ -166,7 +166,7 @@ def auth_setup(
 ) -> None:
     """Interactive paste-cookies flow for users without Chrome auto-grab."""
     import re
-    import sys
+
     import httpx
 
     console.print("[bold]Substack auth setup[/bold]")
@@ -906,7 +906,6 @@ def notes_list(
     t.add_column("replies", justify="right")
     t.add_column("reactions", justify="right")
     for n in notes:
-        ctx = n.get("context") or {}
         comment = n.get("comment") or {}
         body = (comment.get("body") or n.get("body") or "").replace("\n", " ")
         date = (comment.get("date") or n.get("date") or "")[:10]
@@ -979,6 +978,42 @@ def notes_restack(
         r = c.restack_note(note_id=note_id, on=not off, dry_run=dry_run)
         if not dry_run:
             DedupDB().record(target_id=str(note_id), action=action)
+        _audit_write(action, target_id=str(note_id), payload=r, dry_run=dry_run)
+    console.print_json(data=r)
+
+
+@notes_app.command("quote-restack")
+def notes_quote_restack(
+    note_id: str = typer.Argument(..., help="Numeric id of the Note/comment to quote."),
+    body: str = typer.Argument(..., help="Commentary text for the new quote Note."),
+    attachment_id: str | None = typer.Option(
+        None,
+        "--attachment-id",
+        help="Use an existing comment attachment id instead of creating one.",
+    ),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run"),
+    force: bool = typer.Option(False, "--force"),
+) -> None:
+    """Publish a new Note with another Note attached."""
+    from substack_ops.dedup import DedupDB, DuplicateActionError
+
+    action = "quote_restack_note"
+    target_id = f"{note_id}:{body}"
+    with _client() as c:
+        if not dry_run:
+            try:
+                DedupDB().check(target_id=target_id, action=action, force=force)
+            except DuplicateActionError as exc:
+                err_console.print(str(exc))
+                raise typer.Exit(code=2) from exc
+        r = c.quote_restack_note(
+            note_id=note_id,
+            body=body,
+            attachment_id=attachment_id,
+            dry_run=dry_run,
+        )
+        if not dry_run:
+            DedupDB().record(target_id=target_id, action=action)
         _audit_write(action, target_id=str(note_id), payload=r, dry_run=dry_run)
     console.print_json(data=r)
 
